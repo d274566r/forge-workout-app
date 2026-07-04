@@ -523,6 +523,23 @@ function saveLocalCache(userId, s) {
   localStorage.setItem(PROFILE_DATA_PREFIX + userId, JSON.stringify(s));
 }
 
+// Profile name/color cache — separate from workout data above. Without this,
+// a page load whose Supabase fetch fails (network blip, platform hiccup) has
+// nothing to fall back on except a hardcoded "You"/blue default, even though
+// the real name/color are safely persisted server-side. This makes the
+// fallback show your actual last-known identity instead.
+const PROFILE_META_PREFIX = "forge-profile-meta-v1:";
+function loadLocalProfileMeta(userId) {
+  try {
+    const raw = localStorage.getItem(PROFILE_META_PREFIX + userId);
+    if (raw) return JSON.parse(raw);
+  } catch (e) { /* corrupted — ignore */ }
+  return null;
+}
+function saveLocalProfileMeta(userId, name, color) {
+  localStorage.setItem(PROFILE_META_PREFIX + userId, JSON.stringify({ name, color }));
+}
+
 /* save(): unchanged call sites, new internals.
    1. Write local cache synchronously — every caller keeps working exactly as
       before, offline or online, with zero latency.
@@ -610,9 +627,10 @@ function renderProfileBadge() {
 }
 async function pushProfileMeta() {
   if (!currentUserId) return;
+  saveLocalProfileMeta(currentUserId, myProfile.name, myProfile.color); // cache immediately, before the network round-trip
   try {
     await sb.from("profiles").update({ name: myProfile.name, color: myProfile.color, updated_at: new Date().toISOString() }).eq("id", currentUserId);
-  } catch (e) { /* best-effort; local myProfile already reflects the change */ }
+  } catch (e) { /* best-effort; local cache + myProfile already reflect the change */ }
 }
 async function logOut() {
   showConfirm("Log out of this device?", async () => { await sb.auth.signOut(); });
@@ -1403,9 +1421,18 @@ async function loadAndAdoptState(userId, email) {
     myProfile = { id: row.id, name: row.name, color: row.color };
     state = row.data || { active: null, history: [], program: null, location: "gym" };
     saveLocalCache(userId, state);
+    saveLocalProfileMeta(userId, row.name, row.color);
     setSyncIndicator("synced");
   } catch (e) {
-    myProfile = { id: userId, name: myProfile.name || "You", color: myProfile.color || PROFILE_COLORS[0] };
+    // Fetch failed (network blip, platform hiccup, etc.) — fall back to the
+    // last-known real name/color from local cache rather than a hardcoded
+    // default, since the actual data is safely persisted server-side.
+    const cachedMeta = loadLocalProfileMeta(userId);
+    myProfile = {
+      id: userId,
+      name: (cachedMeta && cachedMeta.name) || myProfile.name || "You",
+      color: (cachedMeta && cachedMeta.color) || myProfile.color || PROFILE_COLORS[0],
+    };
     state = localCached;
     setSyncIndicator("offline");
   }
