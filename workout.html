@@ -1,0 +1,1458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forge — Workout Planner &amp; Tracker</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --surface: #181b22;
+    --surface-2: #21252f;
+    --border: #2c313d;
+    --text: #e8eaf0;
+    --text-dim: #9aa1b0;
+    --accent: #4f8cff;
+    --accent-soft: rgba(79, 140, 255, 0.15);
+    --green: #3ecf8e;
+    --green-soft: rgba(62, 207, 142, 0.15);
+    --orange: #ff9f43;
+    --red: #ff6b6b;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+  }
+  .app { max-width: 640px; margin: 0 auto; padding: 16px 16px 90px; }
+
+  header { display: flex; align-items: center; justify-content: space-between; padding: 8px 0 16px; }
+  header h1 { font-size: 22px; letter-spacing: 0.5px; }
+  header h1 span { color: var(--accent); }
+  .streak-badge {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 20px; padding: 6px 14px; font-size: 13px; color: var(--text-dim);
+  }
+  .streak-badge b { color: var(--orange); }
+
+  .header-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+  .profile-pill {
+    display: flex; align-items: center; gap: 7px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 20px; padding: 5px 12px 5px 8px; font-size: 13px; color: var(--text);
+    font-family: inherit; cursor: pointer;
+  }
+  .profile-pill:hover { border-color: var(--accent); }
+  .profile-dot { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; display: inline-block; background: var(--accent); }
+  .profile-row {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 10px; padding: 10px 12px; margin-bottom: 8px;
+    font-size: 14px; font-family: inherit; text-align: left;
+  }
+  .profile-row:hover { border-color: var(--accent); }
+  .profile-row.active { border-color: var(--accent); background: var(--accent-soft); }
+  .profile-row .profile-dot { width: 20px; height: 20px; }
+  .profile-row-main {
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px;
+    background: none; border: none; color: inherit; padding: 0;
+    font-size: 14px; font-family: inherit; text-align: left; cursor: pointer;
+  }
+  .profile-row input[type="text"] { flex: 1; min-width: 0; }
+  .swatch-btn { width: 30px; height: 30px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; flex-shrink: 0; }
+  .swatch-btn.selected { border-color: var(--text); }
+
+  /* Tabs */
+  nav {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--surface); border-top: 1px solid var(--border);
+    display: flex; justify-content: center; gap: 4px; padding: 8px; z-index: 50;
+  }
+  nav button {
+    flex: 1; max-width: 150px; background: none; border: none; color: var(--text-dim);
+    font-size: 13px; padding: 10px 6px; border-radius: 10px; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    font-family: inherit;
+  }
+  nav button .icon { font-size: 20px; }
+  nav button.active { color: var(--accent); background: var(--accent-soft); }
+
+  .view { display: none; }
+  .view.active { display: block; animation: fadeIn 0.2s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+  h2 { font-size: 17px; margin: 18px 0 10px; }
+  .subtitle { color: var(--text-dim); font-size: 13px; margin-bottom: 14px; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px; margin-bottom: 12px;
+  }
+
+  /* Focus picker */
+  .focus-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .focus-btn {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 14px 12px; cursor: pointer; text-align: left; color: var(--text);
+    font-family: inherit; transition: border-color 0.15s, background 0.15s;
+  }
+  .focus-btn:hover { border-color: var(--accent); }
+  .focus-btn.selected { border-color: var(--accent); background: var(--accent-soft); }
+  .focus-btn .f-icon { font-size: 22px; display: block; margin-bottom: 6px; }
+  .focus-btn .f-name { font-weight: 600; font-size: 14px; }
+  .focus-btn .f-desc { font-size: 11.5px; color: var(--text-dim); margin-top: 2px; }
+
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  label.inline { font-size: 13px; color: var(--text-dim); }
+  select, input[type="number"], input[type="text"], input[type="date"] {
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 8px 10px; font-size: 14px; font-family: inherit;
+  }
+  input[type="number"] { width: 72px; }
+
+  .btn {
+    background: var(--accent); color: #fff; border: none; border-radius: 10px;
+    padding: 12px 18px; font-size: 14px; font-weight: 600; cursor: pointer;
+    font-family: inherit; transition: filter 0.15s;
+  }
+  .btn:hover { filter: brightness(1.1); }
+  .btn.secondary { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
+  .btn.green { background: var(--green); color: #0a2618; }
+  .btn.danger { background: transparent; color: var(--red); border: 1px solid var(--red); }
+  .btn.small { padding: 6px 12px; font-size: 12.5px; border-radius: 8px; }
+  .btn.block { width: 100%; margin-top: 10px; }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  /* Exercise rows in plan */
+  .ex-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+  }
+  .ex-row:last-child { border-bottom: none; }
+  .ex-info { flex: 1; min-width: 0; }
+  .ex-name { font-weight: 600; font-size: 14px; }
+  .ex-meta { font-size: 12px; color: var(--text-dim); margin-top: 1px; }
+  .tag {
+    display: inline-block; font-size: 10.5px; padding: 2px 8px; border-radius: 10px;
+    background: var(--surface-2); color: var(--text-dim); border: 1px solid var(--border);
+    margin-left: 6px; vertical-align: middle;
+  }
+  .icon-btn {
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim);
+    border-radius: 8px; width: 32px; height: 32px; cursor: pointer; font-size: 14px;
+    flex-shrink: 0;
+  }
+  .icon-btn:hover { color: var(--text); border-color: var(--text-dim); }
+
+  /* Active workout */
+  .set-grid { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+  .set-line { display: flex; align-items: center; gap: 8px; }
+  .set-num { width: 44px; font-size: 12.5px; color: var(--text-dim); flex-shrink: 0; }
+  .set-line input { width: 74px; text-align: center; }
+  .set-line .x { color: var(--text-dim); font-size: 12px; }
+  .set-check {
+    width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--surface-2); color: transparent; cursor: pointer; font-size: 16px;
+    flex-shrink: 0; margin-left: auto;
+  }
+  .set-check.done { background: var(--green-soft); border-color: var(--green); color: var(--green); }
+  .workout-ex.collapsed .set-grid { display: none; }
+  .ex-header { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .ex-progress { font-size: 12px; color: var(--text-dim); margin-left: auto; flex-shrink: 0; }
+  .ex-progress.complete { color: var(--green); }
+
+  /* History */
+  .hist-card { cursor: pointer; }
+  .hist-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .hist-date { font-size: 12.5px; color: var(--text-dim); }
+  .hist-focus { font-weight: 700; font-size: 15px; }
+  .hist-stats { display: flex; gap: 16px; margin-top: 8px; font-size: 12.5px; color: var(--text-dim); }
+  .hist-stats b { color: var(--text); }
+  .hist-detail { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; display: none; }
+  .hist-card.open .hist-detail { display: block; }
+  .hist-detail .ex-line { font-size: 13px; padding: 4px 0; display: flex; justify-content: space-between; }
+  .hist-detail .ex-line span:last-child { color: var(--text-dim); }
+
+  .stat-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
+  .stat-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; text-align: center; }
+  .stat-box .num { font-size: 20px; font-weight: 700; color: var(--accent); }
+  .stat-box .lbl { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+  .empty { text-align: center; color: var(--text-dim); padding: 40px 20px; font-size: 14px; }
+  .empty .big { font-size: 36px; display: block; margin-bottom: 10px; }
+
+  /* Modal for swapping exercise */
+  .modal-backdrop {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 300;
+    align-items: flex-end; justify-content: center;
+  }
+  .modal-backdrop.open { display: flex; }
+  /* confirm/alert can be triggered from inside another open modal (e.g. "Log out?"
+     from the profile modal) — always render above any other modal-backdrop. */
+  #confirmModal { z-index: 350; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px 16px 0 0;
+    width: 100%; max-width: 640px; max-height: 70vh; overflow-y: auto; padding: 18px;
+  }
+  .modal h3 { font-size: 15px; margin-bottom: 12px; }
+  .auth-screen { display: none; position: fixed; inset: 0; background: var(--bg); align-items: center; justify-content: center; padding: 20px; z-index: 200; }
+  .auth-screen.open { display: flex; }
+  .auth-card { max-width: 360px; width: 100%; text-align: center; }
+  .auth-card h1 { font-size: 28px; margin-bottom: 4px; }
+  .auth-card input { width: 100%; text-align: left; }
+  .swap-option {
+    display: block; width: 100%; text-align: left; background: var(--surface-2);
+    border: 1px solid var(--border); color: var(--text); border-radius: 10px;
+    padding: 10px 12px; margin-bottom: 8px; cursor: pointer; font-size: 14px; font-family: inherit;
+  }
+  .swap-option:hover { border-color: var(--accent); }
+  .swap-option small { color: var(--text-dim); display: block; font-size: 11.5px; }
+
+  .banner {
+    background: var(--green-soft); border: 1px solid var(--green); color: var(--green);
+    border-radius: var(--radius); padding: 12px 16px; font-size: 14px; font-weight: 600;
+    margin-bottom: 12px; text-align: center;
+  }
+
+  /* Goal / program */
+  .progress-track { height: 8px; background: var(--surface-2); border-radius: 6px; overflow: hidden; margin-top: 10px; }
+  .progress-fill { height: 100%; background: var(--accent); border-radius: 6px; transition: width 0.3s; }
+  .program-strip {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 8px 14px; font-size: 12.5px; color: var(--text-dim); margin-bottom: 14px;
+    display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; cursor: pointer;
+  }
+  .program-strip b { color: var(--text); }
+  .slot-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .slot-row:last-child { border-bottom: none; }
+  .slot-status { font-size: 12px; color: var(--text-dim); margin-left: auto; flex-shrink: 0; }
+  .slot-status.done { color: var(--green); }
+  .deload-chip {
+    display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 10px;
+    background: rgba(255, 159, 67, 0.15); color: var(--orange); border: 1px solid var(--orange);
+    margin-left: 6px; vertical-align: middle;
+  }
+  .hint { font-size: 11.5px; color: var(--accent); margin-top: 2px; }
+  .loc-btn {
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim);
+    border-radius: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer; font-family: inherit;
+  }
+  .loc-btn.selected { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+</style>
+</head>
+<body>
+<div id="authScreen" class="auth-screen">
+  <div class="card auth-card">
+    <h1>Forge<span style="color:var(--accent)">.</span></h1>
+    <p class="subtitle" id="authSubtitle">Sign in to sync your workouts across devices.</p>
+    <div id="authFormStep">
+      <label class="inline" style="display:block; margin-bottom:6px;">Email</label>
+      <input type="email" id="authEmail" placeholder="you@example.com" style="width:100%; margin-bottom:12px;"
+        onkeydown="if(event.key==='Enter') sendMagicLink();">
+      <button class="btn block" id="sendLinkBtn" onclick="sendMagicLink()">Send magic link</button>
+    </div>
+    <div id="authSentStep" style="display:none; text-align:center;">
+      <span style="font-size:36px; display:block; margin-bottom:10px;">📬</span>
+      <p>Check <b id="authSentEmail"></b> for a sign-in link.</p>
+      <button class="btn secondary block" style="margin-top:14px;" onclick="resetAuthForm()">Use a different email</button>
+    </div>
+  </div>
+</div>
+
+<div class="app">
+  <header>
+    <h1>Forge<span>.</span></h1>
+    <div class="header-right">
+      <button class="profile-pill" id="profilePill" onclick="openProfileModal()">
+        <span class="profile-dot" id="profileDot"></span>
+        <span id="profileName">You</span>
+      </button>
+      <span id="syncIndicator" class="streak-badge" style="display:none; color:var(--orange); border-color:var(--orange);">⚠️ offline — using cached data</span>
+      <div class="streak-badge">🔥 <b id="streakCount">0</b> day streak</div>
+    </div>
+  </header>
+  <div id="programStrip"></div>
+
+  <!-- ============ PLAN VIEW ============ -->
+  <section id="view-plan" class="view active">
+    <h2>Plan a workout</h2>
+    <p class="subtitle">Choose your focus and we'll build a session you can tweak.</p>
+
+    <div class="focus-grid" id="focusGrid"></div>
+
+    <div class="card" style="margin-top:14px;">
+      <div class="row" style="margin-bottom:10px;">
+        <label class="inline">Location</label>
+        <span id="locToggle" class="row" style="gap:6px;"></span>
+      </div>
+      <div class="row">
+        <label class="inline">Exercises</label>
+        <select id="exCount">
+          <option value="4">4 — quick</option>
+          <option value="5" selected>5 — standard</option>
+          <option value="6">6 — full session</option>
+          <option value="8">8 — long session</option>
+        </select>
+        <label class="inline">Goal</label>
+        <select id="goalSelect">
+          <option value="strength">Strength (5×5)</option>
+          <option value="hypertrophy" selected>Muscle (3×10)</option>
+          <option value="endurance">Endurance (3×15)</option>
+        </select>
+      </div>
+      <button class="btn block" id="generateBtn">Generate plan</button>
+    </div>
+
+    <div id="planPreview"></div>
+  </section>
+
+  <!-- ============ GOAL VIEW ============ -->
+  <section id="view-goal" class="view">
+    <div id="goalContent"></div>
+  </section>
+
+  <!-- ============ WORKOUT VIEW ============ -->
+  <section id="view-workout" class="view">
+    <div id="workoutContent"></div>
+  </section>
+
+  <!-- ============ HISTORY VIEW ============ -->
+  <section id="view-history" class="view">
+    <h2>History</h2>
+    <div class="stat-strip">
+      <div class="stat-box"><div class="num" id="statTotal">0</div><div class="lbl">workouts</div></div>
+      <div class="stat-box"><div class="num" id="statWeek">0</div><div class="lbl">this week</div></div>
+      <div class="stat-box"><div class="num" id="statVolume">0</div><div class="lbl">lbs this week</div></div>
+    </div>
+    <div id="leaderboardSection"></div>
+    <div id="historyList"></div>
+  </section>
+</div>
+
+<nav>
+  <button data-view="plan" class="active"><span class="icon">📋</span>Plan</button>
+  <button data-view="goal"><span class="icon">🎯</span>Goal</button>
+  <button data-view="workout"><span class="icon">💪</span>Workout</button>
+  <button data-view="history"><span class="icon">📈</span>History</button>
+</nav>
+
+<div class="modal-backdrop" id="swapModal">
+  <div class="modal">
+    <h3>Swap exercise</h3>
+    <div id="swapOptions"></div>
+    <button class="btn secondary block" onclick="closeSwap()">Cancel</button>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="confirmModal">
+  <div class="modal">
+    <h3 id="confirmMessage"></h3>
+    <button class="btn danger block" id="confirmYesBtn" onclick="confirmYes()">Yes</button>
+    <button class="btn secondary block" id="confirmNoBtn" onclick="confirmNo()">Cancel</button>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="profileModal">
+  <div class="modal">
+    <h3>Your profile</h3>
+    <div class="profile-row active">
+      <span class="profile-dot" id="editProfileDot"></span>
+      <input type="text" id="editProfileName" placeholder="Your name">
+    </div>
+    <label class="inline" style="display:block; margin:10px 0 6px;">Color</label>
+    <div class="row" id="colorSwatches" style="margin-bottom:14px;"></div>
+    <button class="btn green block" onclick="saveMyProfile()">Save</button>
+    <button class="btn danger block" onclick="logOut()">Log out</button>
+    <button class="btn secondary block" onclick="closeProfileModal()">Close</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ================= SUPABASE CLIENT ================= */
+const SUPABASE_URL = "https://brvvbitbdnvnhocufrje.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJydnZiaXRiZG52bmhvY3VmcmplIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxODA2NDQsImV4cCI6MjA5ODc1NjY0NH0.EkrX-I2x9Xsoo5i6A3ep_YkqLt0FgWjMbIn3WmLZ5sA";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* ================= EXERCISE LIBRARY ================= */
+const LIBRARY = {
+  chest: [
+    { name: "Barbell Bench Press", equip: "barbell" },
+    { name: "Dumbbell Bench Press", equip: "dumbbells" },
+    { name: "Incline Dumbbell Press", equip: "dumbbells" },
+    { name: "Push-Ups", equip: "bodyweight" },
+    { name: "Cable Chest Fly", equip: "cable" },
+    { name: "Dips", equip: "bodyweight" },
+  ],
+  back: [
+    { name: "Pull-Ups", equip: "bodyweight" },
+    { name: "Lat Pulldown", equip: "machine" },
+    { name: "Barbell Row", equip: "barbell" },
+    { name: "Seated Cable Row", equip: "cable" },
+    { name: "Dumbbell Row", equip: "dumbbells" },
+    { name: "Renegade Row", equip: "dumbbells" },
+    { name: "Face Pulls", equip: "cable" },
+  ],
+  shoulders: [
+    { name: "Overhead Press", equip: "barbell" },
+    { name: "Dumbbell Shoulder Press", equip: "dumbbells" },
+    { name: "Lateral Raises", equip: "dumbbells" },
+    { name: "Rear Delt Fly", equip: "dumbbells" },
+    { name: "Arnold Press", equip: "dumbbells" },
+  ],
+  arms: [
+    { name: "Barbell Curl", equip: "barbell" },
+    { name: "Dumbbell Hammer Curl", equip: "dumbbells" },
+    { name: "Tricep Pushdown", equip: "cable" },
+    { name: "Overhead Tricep Extension", equip: "dumbbells" },
+    { name: "Preacher Curl", equip: "machine" },
+    { name: "Close-Grip Bench Press", equip: "barbell" },
+    { name: "Bench Dips", equip: "bodyweight" },
+  ],
+  quads: [
+    { name: "Barbell Back Squat", equip: "barbell" },
+    { name: "Goblet Squat", equip: "dumbbells" },
+    { name: "Leg Press", equip: "machine" },
+    { name: "Walking Lunges", equip: "dumbbells" },
+    { name: "Bulgarian Split Squat", equip: "dumbbells" },
+    { name: "Leg Extension", equip: "machine" },
+  ],
+  hamsGlutes: [
+    { name: "Romanian Deadlift", equip: "barbell" },
+    { name: "Conventional Deadlift", equip: "barbell" },
+    { name: "Hip Thrust", equip: "barbell" },
+    { name: "Leg Curl", equip: "machine" },
+    { name: "Glute Bridge", equip: "bodyweight" },
+    { name: "Single-Leg Glute Bridge", equip: "bodyweight" },
+    { name: "Dumbbell Romanian Deadlift", equip: "dumbbells" },
+    { name: "Good Mornings", equip: "barbell" },
+  ],
+  calves: [
+    { name: "Standing Calf Raise", equip: "machine" },
+    { name: "Seated Calf Raise", equip: "machine" },
+    { name: "Single-Leg Calf Raise", equip: "bodyweight" },
+  ],
+  core: [
+    { name: "Plank", equip: "bodyweight", timed: true },
+    { name: "Hanging Leg Raise", equip: "bodyweight" },
+    { name: "Cable Crunch", equip: "cable" },
+    { name: "Russian Twists", equip: "bodyweight" },
+    { name: "Ab Wheel Rollout", equip: "bodyweight" },
+    { name: "Dead Bug", equip: "bodyweight" },
+    { name: "Side Plank", equip: "bodyweight", timed: true },
+  ],
+  cardio: [
+    { name: "Rowing Machine", equip: "machine", timed: true },
+    { name: "Assault Bike", equip: "machine", timed: true },
+    { name: "Jump Rope", equip: "bodyweight", timed: true },
+    { name: "Kettlebell Swings", equip: "kettlebell" },
+    { name: "Burpees", equip: "bodyweight" },
+    { name: "Mountain Climbers", equip: "bodyweight" },
+  ],
+};
+
+/* Focus templates: which muscle groups to draw from, in priority order */
+const FOCUSES = {
+  fullbody:  { icon: "🏋️", name: "Full Body",  desc: "Hit everything in one session", groups: ["quads", "chest", "back", "hamsGlutes", "shoulders", "core", "arms", "cardio"] },
+  upper:     { icon: "💪", name: "Upper Body", desc: "Chest, back, shoulders, arms", groups: ["chest", "back", "shoulders", "arms", "arms", "chest", "back", "core"] },
+  lower:     { icon: "🦵", name: "Lower Body", desc: "Quads, hamstrings, glutes, calves", groups: ["quads", "hamsGlutes", "quads", "hamsGlutes", "calves", "core", "quads", "hamsGlutes"] },
+  push:      { icon: "🙌", name: "Push",       desc: "Chest, shoulders, triceps", groups: ["chest", "shoulders", "chest", "arms", "shoulders", "arms", "chest", "core"] },
+  pull:      { icon: "🧗", name: "Pull",       desc: "Back and biceps", groups: ["back", "back", "arms", "back", "arms", "back", "core", "arms"] },
+  legs:      { icon: "🦿", name: "Legs",       desc: "Squat, hinge, lunge patterns", groups: ["quads", "hamsGlutes", "quads", "hamsGlutes", "calves", "quads", "hamsGlutes", "core"] },
+  core:      { icon: "🎯", name: "Core",       desc: "Abs and stability work", groups: ["core", "core", "core", "core", "core", "core", "core", "core"] },
+  cardio:    { icon: "🏃", name: "Conditioning", desc: "Heart rate and endurance", groups: ["cardio", "cardio", "cardio", "core", "cardio", "cardio", "core", "cardio"] },
+};
+
+const GOALS = {
+  strength:    { sets: 5, reps: 5 },
+  hypertrophy: { sets: 3, reps: 10 },
+  endurance:   { sets: 3, reps: 15 },
+};
+
+const GROUP_LABELS = {
+  chest: "Chest", back: "Back", shoulders: "Shoulders", arms: "Arms",
+  quads: "Quads", hamsGlutes: "Hams / Glutes", calves: "Calves",
+  core: "Core", cardio: "Conditioning",
+};
+
+/* Locations: which equipment is available. null = everything allowed. */
+const LOCATIONS = {
+  gym:  { icon: "🏢", name: "Gym",  equip: null },
+  home: { icon: "🏠", name: "Home", equip: new Set(["bodyweight", "dumbbells", "kettlebell"]) },
+};
+function currentLoc() { return state.location || "gym"; }
+function locEquip(key) { return LOCATIONS[key || currentLoc()].equip; }
+function locationToggleHTML() {
+  return Object.entries(LOCATIONS).map(([k, l]) =>
+    `<button class="loc-btn ${currentLoc() === k ? "selected" : ""}" onclick="setLocation('${k}')">${l.icon} ${l.name}</button>`
+  ).join("");
+}
+function setLocation(k) {
+  state.location = k;
+  save();
+  renderLocationControls();
+}
+function renderLocationControls() {
+  ["locToggle", "locToggleGoal"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = locationToggleHTML();
+  });
+}
+
+/* ================= STATE ================= */
+const STORE_KEY = "forge-workout-data-v1";            // legacy bare key, untouched, dead after migration
+const PROFILE_DATA_PREFIX = "forge-workout-data-v1:"; // local cache key = PROFILE_DATA_PREFIX + userId
+const IMPORTED_FLAG_PREFIX = "forge-imported-v1:";    // marks that we've offered the one-time import
+
+let currentUserId = null;
+let state = { active: null, history: [], program: null, location: "gym" };
+let selectedFocus = null;
+let draftPlan = null; // { focus, goal, exercises: [{name, group, equip, sets: n, reps: n}] }
+
+function loadLocalCache(userId) {
+  try {
+    const raw = localStorage.getItem(PROFILE_DATA_PREFIX + userId);
+    if (raw) return JSON.parse(raw);
+  } catch (e) { /* corrupted — start fresh */ }
+  return { active: null, history: [], program: null, location: "gym" };
+}
+function saveLocalCache(userId, s) {
+  localStorage.setItem(PROFILE_DATA_PREFIX + userId, JSON.stringify(s));
+}
+
+/* save(): unchanged call sites, new internals.
+   1. Write local cache synchronously — every caller keeps working exactly as
+      before, offline or online, with zero latency.
+   2. Debounce a push to Supabase so rapid-fire calls (e.g. every keystroke via
+      updateSet) coalesce into one network write ~900ms after the last change. */
+let pushTimer = null;
+let pushDirty = false;
+
+function save() {
+  if (!currentUserId) return; // guards stray calls before auth resolves
+  saveLocalCache(currentUserId, state);
+  pushDirty = true;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(pushStateToSupabase, 900);
+}
+
+async function pushStateToSupabase() {
+  if (!pushDirty || !currentUserId) return;
+  pushDirty = false; // optimistic clear; re-set true on failure below so a later
+                      // save() or "online" event retries — the entire retry
+                      // mechanism, deliberately simple (2-person casual app; the
+                      // local cache is always the source of truth for this
+                      // device regardless of push success, so nothing is lost
+                      // even if a push never lands)
+  const snapshot = state;
+  try {
+    const { error } = await sb.from("profiles")
+      .update({ data: snapshot, updated_at: new Date().toISOString() })
+      .eq("id", currentUserId);
+    if (error) throw error;
+    setSyncIndicator("synced");
+  } catch (e) {
+    pushDirty = true;
+    setSyncIndicator("offline");
+  }
+}
+window.addEventListener("online", () => { if (pushDirty) pushStateToSupabase(); });
+
+function setSyncIndicator(status) {
+  const el = document.getElementById("syncIndicator");
+  if (!el) return;
+  el.style.display = status === "offline" ? "" : "none";
+}
+
+// Isolated read of another user's data for the leaderboard — never assigned to
+// the global `state`.
+async function fetchAllProfiles() {
+  const { data, error } = await sb.from("profiles").select("id, name, color, data, updated_at");
+  return error ? [] : data;
+}
+
+/* ---- My profile (single cloud identity) ---- */
+const PROFILE_COLORS = ["#4f8cff", "#3ecf8e", "#ff9f43", "#ff6b6b", "#c77dff", "#f5d547"];
+let myProfile = { id: null, name: "You", color: PROFILE_COLORS[0] };
+let editProfileColor = PROFILE_COLORS[0];
+
+function openProfileModal() {
+  editProfileColor = myProfile.color;
+  document.getElementById("editProfileName").value = myProfile.name;
+  document.getElementById("editProfileDot").style.background = myProfile.color;
+  renderColorSwatches();
+  document.getElementById("profileModal").classList.add("open");
+}
+function closeProfileModal() { document.getElementById("profileModal").classList.remove("open"); }
+
+function renderColorSwatches() {
+  document.getElementById("colorSwatches").innerHTML = PROFILE_COLORS.map(c => `
+    <button class="swatch-btn ${c === editProfileColor ? "selected" : ""}" style="background:${c}" onclick="pickProfileColor('${c}')"></button>`).join("");
+}
+function pickProfileColor(c) {
+  editProfileColor = c;
+  document.getElementById("editProfileDot").style.background = c;
+  renderColorSwatches();
+}
+function saveMyProfile() {
+  myProfile.name = (document.getElementById("editProfileName").value || "").trim() || "You";
+  myProfile.color = editProfileColor;
+  renderProfileBadge();
+  closeProfileModal();
+  pushProfileMeta();
+}
+function renderProfileBadge() {
+  document.getElementById("profileDot").style.background = myProfile.color;
+  document.getElementById("profileName").textContent = myProfile.name;
+}
+async function pushProfileMeta() {
+  if (!currentUserId) return;
+  try {
+    await sb.from("profiles").update({ name: myProfile.name, color: myProfile.color, updated_at: new Date().toISOString() }).eq("id", currentUserId);
+  } catch (e) { /* best-effort; local myProfile already reflects the change */ }
+}
+async function logOut() {
+  showConfirm("Log out of this device?", async () => { await sb.auth.signOut(); });
+}
+
+/* ================= NAVIGATION ================= */
+const views = ["plan", "goal", "workout", "history"];
+document.querySelectorAll("nav button").forEach(btn => {
+  btn.addEventListener("click", () => showView(btn.dataset.view));
+});
+function showView(name) {
+  views.forEach(v => {
+    document.getElementById("view-" + v).classList.toggle("active", v === name);
+  });
+  document.querySelectorAll("nav button").forEach(b =>
+    b.classList.toggle("active", b.dataset.view === name));
+  if (name === "goal") renderGoal();
+  if (name === "workout") renderWorkout();
+  if (name === "history") renderHistory();
+}
+
+/* ================= PLAN BUILDER ================= */
+function renderFocusGrid() {
+  const grid = document.getElementById("focusGrid");
+  grid.innerHTML = "";
+  Object.entries(FOCUSES).forEach(([key, f]) => {
+    const btn = document.createElement("button");
+    btn.className = "focus-btn" + (selectedFocus === key ? " selected" : "");
+    btn.innerHTML = `<span class="f-icon">${f.icon}</span>
+      <span class="f-name">${f.name}</span>
+      <div class="f-desc">${f.desc}</div>`;
+    btn.addEventListener("click", () => {
+      selectedFocus = key;
+      renderFocusGrid();
+    });
+    grid.appendChild(btn);
+  });
+}
+
+function pick(arr, exclude, equipSet) {
+  const pool = arr.filter(e => !exclude.has(e.name) && (!equipSet || equipSet.has(e.equip)));
+  if (!pool.length) return null;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function generatePlan() {
+  if (!selectedFocus) { showAlert("Pick a focus first!"); return; }
+  const count = parseInt(document.getElementById("exCount").value, 10);
+  const goalKey = document.getElementById("goalSelect").value;
+  const goal = GOALS[goalKey];
+  const focus = FOCUSES[selectedFocus];
+
+  const equipSet = locEquip();
+  const used = new Set();
+  const exercises = [];
+  for (let i = 0; i < count; i++) {
+    const group = focus.groups[i % focus.groups.length];
+    const ex = pick(LIBRARY[group], used, equipSet);
+    if (!ex) continue;
+    used.add(ex.name);
+    exercises.push({
+      name: ex.name, group, equip: ex.equip, timed: !!ex.timed,
+      sets: goal.sets, reps: ex.timed ? 45 : goal.reps, // timed = seconds
+    });
+  }
+  draftPlan = { focus: selectedFocus, goal: goalKey, location: currentLoc(), exercises };
+  renderPlanPreview();
+}
+
+function renderPlanPreview() {
+  const el = document.getElementById("planPreview");
+  if (!draftPlan) { el.innerHTML = ""; return; }
+  const f = FOCUSES[draftPlan.focus];
+  const loc = LOCATIONS[draftPlan.location || "gym"];
+  let html = `<h2>${f.icon} ${f.name} — ${draftPlan.exercises.length} exercises <span class="tag">${loc.icon} ${loc.name}</span></h2><div class="card">`;
+  draftPlan.exercises.forEach((ex, i) => {
+    html += `<div class="ex-row">
+      <div class="ex-info">
+        <div class="ex-name">${ex.name}<span class="tag">${GROUP_LABELS[ex.group]}</span></div>
+        <div class="ex-meta">${ex.sets} sets × ${ex.reps}${ex.timed ? " sec" : " reps"} · ${ex.equip}</div>
+      </div>
+      <button class="icon-btn" title="Swap exercise" onclick="openSwap(${i})">⇄</button>
+      <button class="icon-btn" title="Remove" onclick="removeExercise(${i})">✕</button>
+    </div>`;
+  });
+  html += `</div>
+    <button class="btn green block" onclick="startWorkout()">Start this workout →</button>
+    <button class="btn secondary block" onclick="generatePlan()">🎲 Regenerate</button>`;
+  el.innerHTML = html;
+}
+
+function removeExercise(i) {
+  draftPlan.exercises.splice(i, 1);
+  renderPlanPreview();
+}
+
+let swapIndex = null;
+function openSwap(i) {
+  swapIndex = i;
+  const ex = draftPlan.exercises[i];
+  const used = new Set(draftPlan.exercises.map(e => e.name));
+  const equipSet = locEquip(draftPlan.location);
+  const options = LIBRARY[ex.group].filter(e => !used.has(e.name) && (!equipSet || equipSet.has(e.equip)));
+  const el = document.getElementById("swapOptions");
+  el.innerHTML = options.length
+    ? options.map(o => `<button class="swap-option" onclick="doSwap('${o.name.replace(/'/g, "\\'")}')">${o.name}<small>${o.equip}</small></button>`).join("")
+    : `<p class="subtitle">No alternatives left in this muscle group.</p>`;
+  document.getElementById("swapModal").classList.add("open");
+}
+function doSwap(name) {
+  const ex = draftPlan.exercises[swapIndex];
+  const replacement = LIBRARY[ex.group].find(e => e.name === name);
+  draftPlan.exercises[swapIndex] = {
+    ...ex, name: replacement.name, equip: replacement.equip,
+    timed: !!replacement.timed,
+    reps: replacement.timed ? 45 : (ex.timed ? GOALS[draftPlan.goal].reps : ex.reps),
+  };
+  closeSwap();
+  renderPlanPreview();
+}
+function closeSwap() { document.getElementById("swapModal").classList.remove("open"); }
+
+/* ---- Replace exercise inside an ACTIVE workout (Plan or Goal mode) ---- */
+let workoutSwapIndex = null;
+function openWorkoutSwap(ei) {
+  workoutSwapIndex = ei;
+  const ex = state.active.exercises[ei];
+  const used = new Set(state.active.exercises.map(e => e.name));
+  const equipSet = locEquip(state.active.location);
+  const options = LIBRARY[ex.group].filter(e => !used.has(e.name) && (!equipSet || equipSet.has(e.equip)));
+  const el = document.getElementById("swapOptions");
+  el.innerHTML = options.length
+    ? options.map(o => `<button class="swap-option" onclick="doWorkoutSwap('${o.name.replace(/'/g, "\\'")}')">${o.name}<small>${o.equip}</small></button>`).join("")
+    : `<p class="subtitle">No alternatives left in this muscle group.</p>`;
+  document.getElementById("swapModal").classList.add("open");
+}
+function doWorkoutSwap(name) {
+  const ei = workoutSwapIndex;
+  const ex = state.active.exercises[ei];
+  const replacement = LIBRARY[ex.group].find(e => e.name === name);
+
+  const applySwap = () => {
+    const timed = !!replacement.timed;
+    const reps = timed ? 45 : (ex.timed ? GOALS[state.active.goal].reps : ex.reps);
+    const setCount = ex.sets;
+
+    let hint = "", sugg = null;
+    if (!timed && state.active.programTag && state.program) {
+      sugg = suggestWeight(replacement.name, ex.group, state.program.goalType, !!state.active.deload);
+      hint = sugg ? `last time ${sugg.last.weight}×${sugg.last.reps} → try ${sugg.weight} lbs` : "";
+    }
+
+    state.active.exercises[ei] = {
+      name: replacement.name, group: ex.group, equip: replacement.equip,
+      timed, sets: setCount, reps, hint,
+      setLog: Array.from({ length: setCount }, () => ({ weight: sugg ? sugg.weight : "", reps, done: false })),
+    };
+    save();
+    closeSwap();
+    renderWorkout();
+  };
+
+  if (ex.setLog.some(s => s.done)) {
+    showConfirm("Replace this exercise? Logged sets for it will be lost.", applySwap);
+  } else {
+    applySwap();
+  }
+}
+
+/* ================= CUSTOM CONFIRM / ALERT =================
+   Native confirm()/alert() are silently disabled (return undefined
+   with no dialog shown) in iOS "Add to Home Screen" standalone apps,
+   which is how this app is commonly used. Use an in-page modal instead. */
+let confirmCallback = null;
+let confirmNoCallback = null;
+function showConfirm(message, onYes, onNo) {
+  document.getElementById("confirmMessage").textContent = message;
+  document.getElementById("confirmYesBtn").style.display = "";
+  document.getElementById("confirmNoBtn").textContent = "Cancel";
+  confirmCallback = onYes;
+  confirmNoCallback = onNo || null;
+  document.getElementById("confirmModal").classList.add("open");
+}
+function showAlert(message) {
+  document.getElementById("confirmMessage").textContent = message;
+  document.getElementById("confirmYesBtn").style.display = "none";
+  document.getElementById("confirmNoBtn").textContent = "OK";
+  confirmCallback = null;
+  confirmNoCallback = null;
+  document.getElementById("confirmModal").classList.add("open");
+}
+function confirmYes() {
+  document.getElementById("confirmModal").classList.remove("open");
+  const cb = confirmCallback;
+  confirmCallback = null;
+  confirmNoCallback = null;
+  if (cb) cb();
+}
+function confirmNo() {
+  document.getElementById("confirmModal").classList.remove("open");
+  confirmCallback = null;
+  const cb = confirmNoCallback;
+  confirmNoCallback = null;
+  if (cb) cb();
+}
+
+/* ---- One-time import of pre-existing local (pre-Supabase) data ----
+   The old local multi-profile system is gone, but its localStorage keys
+   ("forge-profiles-v1", "forge-workout-data-v1:<id>") are still sitting on
+   disk for anyone who used this app before cloud sync existed. Offer to pull
+   that history into the newly-created cloud account, once, ever. */
+function maybeOfferLocalImport() {
+  const marker = IMPORTED_FLAG_PREFIX + currentUserId;
+  if (localStorage.getItem(marker)) return;
+
+  let oldProfiles = null;
+  try { oldProfiles = JSON.parse(localStorage.getItem("forge-profiles-v1") || "null"); } catch (e) { /* ignore corrupted legacy data */ }
+  if (!oldProfiles || !oldProfiles.profiles || !oldProfiles.profiles.length) {
+    localStorage.setItem(marker, "1");
+    return;
+  }
+  localStorage.setItem(marker, "1"); // offer once, ever — regardless of outcome
+  offerImportCandidates(oldProfiles.profiles);
+}
+
+function offerImportCandidates(list) {
+  let i = 0;
+  const tryNext = () => {
+    if (i >= list.length) return;
+    const p = list[i++];
+    showConfirm(
+      `Import your existing local history ("${p.name}") into your new account? This will replace your current cloud data.`,
+      () => {
+        const legacyData = JSON.parse(localStorage.getItem("forge-workout-data-v1:" + p.id) || "null") ||
+          { active: null, history: [], program: null, location: "gym" };
+        state = legacyData;
+        save();
+        runPostAuthInit();
+      },
+      tryNext // declined -> offer the next candidate, if any (handles 2 old local profiles on a shared device)
+    );
+  };
+  tryNext();
+}
+
+/* ================= ACTIVE WORKOUT ================= */
+function startWorkout() {
+  if (state.active) { showConfirm("You already have a workout in progress. Replace it?", doStartWorkout); return; }
+  doStartWorkout();
+}
+function doStartWorkout() {
+  state.active = {
+    focus: draftPlan.focus,
+    goal: draftPlan.goal,
+    location: draftPlan.location,
+    startedAt: new Date().toISOString(),
+    exercises: draftPlan.exercises.map(ex => ({
+      ...ex,
+      setLog: Array.from({ length: ex.sets }, () => ({ weight: "", reps: ex.reps, done: false })),
+    })),
+  };
+  save();
+  showView("workout");
+}
+
+function renderWorkout() {
+  const el = document.getElementById("workoutContent");
+  if (!state.active) {
+    el.innerHTML = `<div class="empty"><span class="big">💤</span>
+      No workout in progress.<br><br>
+      <button class="btn" onclick="showView('plan')">Plan one now</button></div>`;
+    return;
+  }
+  const w = state.active;
+  const f = FOCUSES[w.focus];
+  const totalSets = w.exercises.reduce((n, ex) => n + ex.setLog.length, 0);
+  const doneSets = w.exercises.reduce((n, ex) => n + ex.setLog.filter(s => s.done).length, 0);
+  const started = new Date(w.startedAt);
+
+  const programChip = w.programTag
+    ? ` <span class="tag">🎯 Wk ${w.programTag.week}</span>${w.deload ? ' <span class="deload-chip">Deload</span>' : ""}`
+    : "";
+  let html = `<h2>${f.icon} ${f.name} session${programChip}</h2>
+    <p class="subtitle">Started ${started.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ${doneSets}/${totalSets} sets done</p>`;
+
+  w.exercises.forEach((ex, ei) => {
+    const done = ex.setLog.filter(s => s.done).length;
+    const complete = done === ex.setLog.length;
+    html += `<div class="card workout-ex" id="wex-${ei}">
+      <div class="ex-header" onclick="toggleCollapse(${ei})">
+        <div class="ex-info">
+          <div class="ex-name">${ex.name}</div>
+          <div class="ex-meta">${GROUP_LABELS[ex.group]} · target ${ex.reps}${ex.timed ? "s" : " reps"}</div>
+          ${ex.hint ? `<div class="hint">📈 ${ex.hint}</div>` : ""}
+        </div>
+        <button class="icon-btn" title="Replace exercise" onclick="event.stopPropagation(); openWorkoutSwap(${ei})">⇄</button>
+        <span class="ex-progress ${complete ? "complete" : ""}">${complete ? "✓ done" : done + "/" + ex.setLog.length}</span>
+      </div>
+      <div class="set-grid">`;
+    ex.setLog.forEach((s, si) => {
+      html += `<div class="set-line">
+        <span class="set-num">Set ${si + 1}</span>
+        <input type="number" placeholder="lbs" value="${s.weight}" min="0" step="2.5"
+          onchange="updateSet(${ei},${si},'weight',this.value)" ${ex.timed ? 'style="visibility:hidden"' : ""}>
+        <span class="x">×</span>
+        <input type="number" value="${s.reps}" min="0"
+          onchange="updateSet(${ei},${si},'reps',this.value)">
+        <span class="x">${ex.timed ? "sec" : "reps"}</span>
+        <button class="set-check ${s.done ? "done" : ""}" onclick="toggleSet(${ei},${si})">✓</button>
+      </div>`;
+    });
+    html += `<div class="row" style="margin-top:8px;">
+        <button class="btn secondary small" onclick="addSet(${ei})">+ Add set</button>
+        <button class="btn secondary small" onclick="removeSet(${ei})">− Remove set</button>
+      </div>
+    </div></div>`;
+  });
+
+  html += `<button class="btn green block" onclick="finishWorkout()" ${doneSets === 0 ? "disabled" : ""}>Finish workout ✓</button>
+    <button class="btn danger block" onclick="discardWorkout()">Discard workout</button>`;
+  el.innerHTML = html;
+}
+
+function toggleCollapse(ei) {
+  document.getElementById("wex-" + ei).classList.toggle("collapsed");
+}
+function updateSet(ei, si, field, val) {
+  state.active.exercises[ei].setLog[si][field] = val === "" ? "" : Number(val);
+  save();
+}
+function toggleSet(ei, si) {
+  const s = state.active.exercises[ei].setLog[si];
+  s.done = !s.done;
+  save();
+  renderWorkout();
+}
+function addSet(ei) {
+  const ex = state.active.exercises[ei];
+  const last = ex.setLog[ex.setLog.length - 1];
+  ex.setLog.push({ weight: last ? last.weight : "", reps: last ? last.reps : ex.reps, done: false });
+  save(); renderWorkout();
+}
+function removeSet(ei) {
+  const ex = state.active.exercises[ei];
+  if (ex.setLog.length > 1) { ex.setLog.pop(); save(); renderWorkout(); }
+}
+
+function finishWorkout() {
+  const w = state.active;
+  const entry = {
+    focus: w.focus,
+    goal: w.goal,
+    date: new Date().toISOString(),
+    startedAt: w.startedAt,
+    exercises: w.exercises.map(ex => ({
+      name: ex.name, group: ex.group, timed: ex.timed,
+      sets: ex.setLog.filter(s => s.done).map(s => ({ weight: Number(s.weight) || 0, reps: Number(s.reps) || 0 })),
+    })).filter(ex => ex.sets.length > 0),
+  };
+  if (w.programTag) {
+    entry.programTag = w.programTag;
+    if (state.program) state.program.log.push({ ...w.programTag, date: entry.date });
+  }
+  state.history.unshift(entry);
+  state.active = null;
+  save();
+  renderStreak();
+  renderProgramStrip();
+  showView(w.programTag ? "goal" : "history");
+}
+
+function discardWorkout() {
+  showConfirm("Discard this workout? Logged sets will be lost.", () => {
+    state.active = null;
+    save();
+    renderWorkout();
+  });
+}
+
+/* ================= HISTORY & STATS ================= */
+function volumeOf(entry) {
+  return entry.exercises.reduce((v, ex) =>
+    v + (ex.timed ? 0 : ex.sets.reduce((s, set) => s + set.weight * set.reps, 0)), 0);
+}
+
+function renderHistory() {
+  const list = document.getElementById("historyList");
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 86400000);
+
+  const thisWeek = state.history.filter(h => new Date(h.date) >= weekAgo);
+  document.getElementById("statTotal").textContent = state.history.length;
+  document.getElementById("statWeek").textContent = thisWeek.length;
+  document.getElementById("statVolume").textContent =
+    Math.round(thisWeek.reduce((v, h) => v + volumeOf(h), 0)).toLocaleString();
+
+  renderLeaderboard();
+
+  if (!state.history.length) {
+    list.innerHTML = `<div class="empty"><span class="big">📭</span>No workouts yet. Finish your first session and it'll show up here.</div>`;
+    return;
+  }
+
+  list.innerHTML = state.history.map((h, i) => {
+    const f = FOCUSES[h.focus] || { icon: "🏋️", name: h.focus };
+    const d = new Date(h.date);
+    const totalSets = h.exercises.reduce((n, ex) => n + ex.sets.length, 0);
+    const vol = Math.round(volumeOf(h));
+    const detail = h.exercises.map(ex => {
+      const best = ex.sets.reduce((m, s) => (s.weight > m.weight ? s : m), ex.sets[0]);
+      const summary = ex.timed
+        ? ex.sets.map(s => s.reps + "s").join(", ")
+        : `${ex.sets.length} × best ${best.weight || 0} lbs × ${best.reps}`;
+      return `<div class="ex-line"><span>${ex.name}</span><span>${summary}</span></div>`;
+    }).join("");
+    return `<div class="card hist-card" onclick="this.classList.toggle('open')">
+      <div class="hist-head">
+        <span class="hist-focus">${f.icon} ${f.name}${h.programTag ? `<span class="tag">🎯 Wk ${h.programTag.week}</span>` : ""}</span>
+        <span class="hist-date">${d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}</span>
+      </div>
+      <div class="hist-stats">
+        <span><b>${h.exercises.length}</b> exercises</span>
+        <span><b>${totalSets}</b> sets</span>
+        ${vol ? `<span><b>${vol.toLocaleString()}</b> lbs volume</span>` : ""}
+      </div>
+      <div class="hist-detail">${detail}</div>
+    </div>`;
+  }).join("");
+}
+
+async function renderLeaderboard() {
+  const el = document.getElementById("leaderboardSection");
+  el.innerHTML = `<h2>🏆 Leaderboard</h2><div class="card"><p class="subtitle">Loading…</p></div>`;
+  const rows = await fetchAllProfiles();
+  if (!rows || rows.length < 2) { el.innerHTML = ""; return; }
+
+  const weekAgo = new Date(Date.now() - 7 * 86400000);
+  const computed = rows.map(p => {
+    const data = p.id === currentUserId ? state : (p.data || { history: [] });
+    const history = data.history || [];
+    const thisWeek = history.filter(h => new Date(h.date) >= weekAgo);
+    return {
+      name: p.name, color: p.color,
+      total: history.length,
+      streak: computeStreak(history),
+      volume: Math.round(thisWeek.reduce((v, h) => v + volumeOf(h), 0)),
+    };
+  }).sort((a, b) => b.volume - a.volume);
+
+  el.innerHTML = `<h2>🏆 Leaderboard</h2><div class="card">` +
+    computed.map(r => `
+      <div class="slot-row">
+        <div class="ex-info">
+          <div class="ex-name"><span class="profile-dot" style="background:${r.color}; width:12px; height:12px; display:inline-block; margin-right:6px; vertical-align:middle;"></span>${r.name}</div>
+          <div class="ex-meta"><b>${r.total}</b> workouts · <b>${r.streak}</b> day streak · <b>${r.volume.toLocaleString()}</b> lbs this week</div>
+        </div>
+      </div>`).join("") + `</div>`;
+}
+
+/* ================= GOAL PROGRAM ================= */
+const GOAL_TYPES = {
+  strength:  { icon: "🏋️", name: "Strength",        desc: "Heavy compound lifts, 5×5", scheme: "strength" },
+  muscle:    { icon: "💪", name: "Build Muscle",     desc: "Hypertrophy volume, 3×10", scheme: "hypertrophy" },
+  endurance: { icon: "🏃", name: "Endurance",        desc: "Higher reps plus conditioning", scheme: "endurance" },
+  fitness:   { icon: "⚡", name: "General Fitness",  desc: "Balanced full-body training", scheme: "hypertrophy" },
+};
+
+const SPLIT_TEMPLATES = {
+  2: ["fullbody", "fullbody"],
+  3: ["push", "pull", "legs"],
+  4: ["upper", "lower", "upper", "lower"],
+  5: ["push", "pull", "legs", "upper", "lower"],
+  6: ["push", "pull", "legs", "push", "pull", "legs"],
+};
+
+function buildSplit(goalType, days) {
+  if (goalType === "endurance") {
+    const s = Array(days).fill("fullbody");
+    s[days - 1] = "cardio";
+    if (days >= 5) s[2] = "cardio";
+    return s;
+  }
+  if (goalType === "fitness") {
+    return Array.from({ length: days }, (_, i) => (i % 3 === 2 ? "core" : "fullbody"));
+  }
+  return SPLIT_TEMPLATES[days].slice();
+}
+
+let selGoalType = null;
+
+function renderGoal() {
+  renderProgramStrip();
+  const el = document.getElementById("goalContent");
+  if (state.program) renderProgramDashboard(el, state.program);
+  else renderGoalSetup(el);
+}
+
+function renderGoalSetup(el) {
+  let html = `<h2>Set a training goal</h2>
+    <p class="subtitle">Pick a goal and duration — we'll build a week-by-week program.</p>
+    <div class="focus-grid">`;
+  Object.entries(GOAL_TYPES).forEach(([key, g]) => {
+    html += `<button class="focus-btn ${selGoalType === key ? "selected" : ""}" onclick="selectGoalType('${key}')">
+      <span class="f-icon">${g.icon}</span><span class="f-name">${g.name}</span>
+      <div class="f-desc">${g.desc}</div></button>`;
+  });
+  html += `</div>
+    <div class="card" style="margin-top:14px;">
+      <div class="row" style="margin-bottom:10px;">
+        <label class="inline">Location</label>
+        <span id="locToggleGoal" class="row" style="gap:6px;"></span>
+      </div>
+      <div class="row">
+        <label class="inline">Duration</label>
+        <select id="progWeeks" onchange="renderSplitPreview()">
+          <option value="4">4 weeks (~1 month)</option>
+          <option value="8" selected>8 weeks (~2 months)</option>
+          <option value="12">12 weeks (~3 months)</option>
+          <option value="custom">Custom…</option>
+        </select>
+        <input type="number" id="progWeeksCustom" min="1" max="52" value="6" style="display:none;" onchange="renderSplitPreview()">
+        <label class="inline">Workouts / week</label>
+        <select id="progDays" onchange="renderSplitPreview()">
+          <option value="2">2</option>
+          <option value="3" selected>3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+        </select>
+      </div>
+      <p class="subtitle" id="splitPreview" style="margin:10px 0 0;"></p>
+      <button class="btn block" onclick="startProgram()">Start program 🎯</button>
+    </div>`;
+  el.innerHTML = html;
+  renderLocationControls();
+  renderSplitPreview();
+}
+
+function selectGoalType(key) { selGoalType = key; renderGoal(); }
+
+function progWeeksValue() {
+  const sel = document.getElementById("progWeeks");
+  if (sel.value === "custom") {
+    return Math.max(1, parseInt(document.getElementById("progWeeksCustom").value, 10) || 6);
+  }
+  return parseInt(sel.value, 10);
+}
+
+function renderSplitPreview() {
+  const sel = document.getElementById("progWeeks");
+  document.getElementById("progWeeksCustom").style.display = sel.value === "custom" ? "" : "none";
+  const el = document.getElementById("splitPreview");
+  if (!selGoalType) { el.textContent = "Pick a goal type above to see your weekly split."; return; }
+  const days = parseInt(document.getElementById("progDays").value, 10);
+  const weeks = progWeeksValue();
+  const split = buildSplit(selGoalType, days);
+  el.innerHTML = `Weekly split: <b>${split.map(s => FOCUSES[s].name).join(" · ")}</b> — ` +
+    `${weeks * days} workouts over ${weeks} weeks${weeks >= 6 ? ", final week is a lighter deload" : ""}.`;
+}
+
+function startProgram() {
+  if (!selGoalType) { showAlert("Pick a goal type first!"); return; }
+  const days = parseInt(document.getElementById("progDays").value, 10);
+  const weeks = progWeeksValue();
+  state.program = {
+    goalType: selGoalType,
+    weeks,
+    daysPerWeek: days,
+    split: buildSplit(selGoalType, days),
+    location: currentLoc(),
+    startDate: new Date().toISOString(),
+    log: [],
+  };
+  save();
+  renderProgramStrip();
+  renderGoal();
+}
+
+function programStats(p) {
+  const total = p.weeks * p.daysPerWeek;
+  const done = p.log.length;
+  const nextWeek = Math.min(p.weeks, Math.floor(done / p.daysPerWeek) + 1);
+  const nextSlot = (done % p.daysPerWeek) + 1;
+  const endDate = new Date(new Date(p.startDate).getTime() + p.weeks * 7 * 86400000);
+  return { total, done, nextWeek, nextSlot, endDate, complete: done >= total };
+}
+
+function isDeloadWeek(p, week) { return p.weeks >= 6 && week === p.weeks; }
+
+function renderProgramDashboard(el, p) {
+  const g = GOAL_TYPES[p.goalType];
+  const s = programStats(p);
+  const pct = Math.round((s.done / s.total) * 100);
+  let html = `<h2>${g.icon} ${p.weeks}-Week ${g.name}</h2>`;
+  if (s.complete) {
+    html += `<div class="banner">🎉 Program complete — ${s.total} workouts. Great work!</div>
+      <button class="btn block" onclick="endProgram(false)">Start a new goal</button>`;
+    el.innerHTML = html;
+    return;
+  }
+  const scheme = GOALS[g.scheme];
+  const loc = LOCATIONS[p.location || "gym"];
+  html += `<p class="subtitle">Week ${s.nextWeek} of ${p.weeks}${isDeloadWeek(p, s.nextWeek) ? ' <span class="deload-chip">Deload week</span>' : ""} · ${loc.icon} ${loc.name} · ends ${s.endDate.toLocaleDateString([], { month: "short", day: "numeric" })}</p>
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <span style="font-size:13px;color:var(--text-dim);">Progress — ${pct}%</span>
+        <span style="font-size:13px;"><b>${s.done}</b> / ${s.total} workouts</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
+    </div>
+    <h2>This week's workouts</h2>
+    <div class="card">`;
+  const doneThisWeek = s.done % p.daysPerWeek;
+  p.split.forEach((focus, i) => {
+    const f = FOCUSES[focus];
+    const slotDone = i < doneThisWeek;
+    const isNext = i === doneThisWeek;
+    html += `<div class="slot-row">
+      <div class="ex-info">
+        <div class="ex-name">${f.icon} ${f.name}</div>
+        <div class="ex-meta">Workout ${i + 1} of ${p.daysPerWeek} · ${scheme.sets}×${scheme.reps} scheme</div>
+      </div>
+      ${slotDone
+        ? '<span class="slot-status done">✓ done</span>'
+        : isNext
+          ? '<button class="btn small green" onclick="startProgramWorkout()">Start</button>'
+          : '<span class="slot-status">up next</span>'}
+    </div>`;
+  });
+  html += `</div>
+    <button class="btn danger block" onclick="endProgram(true)">Cancel program</button>`;
+  el.innerHTML = html;
+}
+
+function endProgram(confirmFirst) {
+  const doEnd = () => {
+    state.program = null;
+    selGoalType = null;
+    save();
+    renderProgramStrip();
+    renderGoal();
+  };
+  if (confirmFirst) showConfirm("Cancel this program? Your workout history stays.", doEnd);
+  else doEnd();
+}
+
+/* --- progressive overload suggestions --- */
+const LOWER_GROUPS = new Set(["quads", "hamsGlutes", "calves"]);
+
+function lastPerformance(name) {
+  for (const h of state.history) {
+    const ex = h.exercises.find(e => e.name === name);
+    if (ex && ex.sets.length) {
+      return ex.sets.reduce((m, s) => (s.weight > m.weight ? s : m), ex.sets[0]);
+    }
+  }
+  return null;
+}
+
+function suggestWeight(name, group, goalType, deload) {
+  const last = lastPerformance(name);
+  if (!last || !last.weight) return null;
+  if (deload) return { weight: Math.max(5, Math.round((last.weight * 0.9) / 5) * 5), last };
+  const inc = goalType === "strength"
+    ? (LOWER_GROUPS.has(group) ? 10 : 5)
+    : (LOWER_GROUPS.has(group) ? 5 : 2.5);
+  return { weight: last.weight + inc, last };
+}
+
+function startProgramWorkout() {
+  const p = state.program;
+  const s = programStats(p);
+  if (s.complete) return;
+  if (state.active) { showConfirm("You already have a workout in progress. Replace it?", () => doStartProgramWorkout(p, s)); return; }
+  doStartProgramWorkout(p, s);
+}
+function doStartProgramWorkout(p, s) {
+  const focusKey = p.split[s.nextSlot - 1];
+  const focus = FOCUSES[focusKey];
+  const scheme = GOALS[GOAL_TYPES[p.goalType].scheme];
+  const deload = isDeloadWeek(p, s.nextWeek);
+  const setCount = deload ? Math.max(2, scheme.sets - 1) : scheme.sets;
+
+  const equipSet = locEquip(p.location);
+  const used = new Set();
+  const exercises = [];
+  for (let i = 0; i < 5; i++) {
+    const group = focus.groups[i % focus.groups.length];
+    const ex = pick(LIBRARY[group], used, equipSet);
+    if (!ex) continue;
+    used.add(ex.name);
+    const timed = !!ex.timed;
+    const reps = timed ? 45 : scheme.reps;
+    const sugg = timed ? null : suggestWeight(ex.name, group, p.goalType, deload);
+    exercises.push({
+      name: ex.name, group, equip: ex.equip, timed,
+      sets: setCount, reps,
+      hint: sugg ? `last time ${sugg.last.weight}×${sugg.last.reps} → try ${sugg.weight} lbs` : "",
+      setLog: Array.from({ length: setCount }, () => ({ weight: sugg ? sugg.weight : "", reps, done: false })),
+    });
+  }
+
+  state.active = {
+    focus: focusKey,
+    goal: GOAL_TYPES[p.goalType].scheme,
+    location: p.location,
+    startedAt: new Date().toISOString(),
+    programTag: { week: s.nextWeek, slot: s.nextSlot },
+    deload,
+    exercises,
+  };
+  save();
+  showView("workout");
+}
+
+function renderProgramStrip() {
+  const el = document.getElementById("programStrip");
+  const p = state.program;
+  if (!p) { el.innerHTML = ""; el.onclick = null; return; }
+  const g = GOAL_TYPES[p.goalType];
+  const s = programStats(p);
+  el.innerHTML = `<span>🎯 <b>${p.weeks}-Week ${g.name}</b>${s.complete ? " · complete 🎉" : ` · week ${s.nextWeek}/${p.weeks}`}</span>
+    <span><b>${s.done}</b>/${s.total} workouts</span>`;
+  el.onclick = () => showView("goal");
+}
+
+/* ================= STREAK ================= */
+function computeStreak(history) {
+  const days = new Set(history.map(h => new Date(h.date).toDateString()));
+  let streak = 0;
+  const d = new Date();
+  // streak counts consecutive days ending today or yesterday
+  if (!days.has(d.toDateString())) d.setDate(d.getDate() - 1);
+  while (days.has(d.toDateString())) {
+    streak++;
+    d.setDate(d.getDate() - 1);
+  }
+  return streak;
+}
+function renderStreak() {
+  document.getElementById("streakCount").textContent = computeStreak(state.history);
+}
+
+/* ================= AUTH-DRIVEN INIT ================= */
+function showAuthScreen(show) {
+  document.getElementById("authScreen").classList.toggle("open", show);
+  document.querySelector(".app").style.display = show ? "none" : "";
+  document.querySelector("nav").style.display = show ? "none" : "";
+}
+
+async function sendMagicLink() {
+  const email = (document.getElementById("authEmail").value || "").trim();
+  if (!email) return;
+  document.getElementById("sendLinkBtn").disabled = true;
+  const { error } = await sb.auth.signInWithOtp({
+    email, options: { emailRedirectTo: window.location.origin + window.location.pathname },
+  });
+  document.getElementById("sendLinkBtn").disabled = false;
+  if (error) { showAlert("Couldn't send link: " + error.message); return; }
+  document.getElementById("authSentEmail").textContent = email;
+  document.getElementById("authFormStep").style.display = "none";
+  document.getElementById("authSentStep").style.display = "block";
+}
+function resetAuthForm() {
+  document.getElementById("authFormStep").style.display = "block";
+  document.getElementById("authSentStep").style.display = "none";
+  document.getElementById("authEmail").value = "";
+}
+
+async function loadAndAdoptState(userId, email) {
+  currentUserId = userId;
+  const localCached = loadLocalCache(userId);
+  try {
+    let { data: row, error } = await sb.from("profiles").select("*").eq("id", userId).single();
+    if (error && error.code === "PGRST116") { // no row yet — first login
+      const seedName = (email || "").split("@")[0] || "You";
+      const inserted = await sb.from("profiles")
+        .upsert({ id: userId, name: seedName, color: PROFILE_COLORS[0], data: localCached, updated_at: new Date().toISOString() })
+        .select().single();
+      row = inserted.data; error = inserted.error;
+    }
+    if (error) throw error;
+    myProfile = { id: row.id, name: row.name, color: row.color };
+    state = row.data || { active: null, history: [], program: null, location: "gym" };
+    saveLocalCache(userId, state);
+    setSyncIndicator("synced");
+  } catch (e) {
+    myProfile = { id: userId, name: myProfile.name || "You", color: myProfile.color || PROFILE_COLORS[0] };
+    state = localCached;
+    setSyncIndicator("offline");
+  }
+}
+
+function resetAppState() {
+  currentUserId = null;
+  state = { active: null, history: [], program: null, location: "gym" };
+  myProfile = { id: null, name: "You", color: PROFILE_COLORS[0] };
+}
+
+async function runPostAuthInit() {
+  renderFocusGrid();
+  renderStreak();
+  renderProgramStrip();
+  renderLocationControls();
+  renderProfileBadge();
+  maybeOfferLocalImport();
+  if (state.active) showView("workout");
+  else if (state.program) showView("goal");
+  else showView("plan");
+}
+
+// Guard against double-init: getSession() at boot and onAuthStateChange's
+// SIGNED_IN can both fire for the same session (Supabase emits SIGNED_IN on
+// client init too in some cases). loadAndAdoptState() sets currentUserId as
+// its first line, so this check makes the second firing a no-op.
+sb.auth.onAuthStateChange(async (event, session) => {
+  if (event === "SIGNED_IN" && session) {
+    if (currentUserId === session.user.id) return;
+    showAuthScreen(false);
+    await loadAndAdoptState(session.user.id, session.user.email);
+    await runPostAuthInit();
+  } else if (event === "SIGNED_OUT") {
+    closeProfileModal(); // may have been open (e.g. "Log out" is triggered from inside it)
+    resetAppState();
+    showAuthScreen(true);
+    resetAuthForm();
+  }
+});
+
+(async function boot() {
+  document.getElementById("generateBtn").addEventListener("click", generatePlan);
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) {
+    showAuthScreen(false);
+    await loadAndAdoptState(session.user.id, session.user.email);
+    await runPostAuthInit();
+  } else {
+    showAuthScreen(true);
+  }
+})();
+</script>
+</body>
+</html>
