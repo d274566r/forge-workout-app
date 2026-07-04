@@ -1386,14 +1386,19 @@ async function loadAndAdoptState(userId, email) {
   currentUserId = userId;
   const localCached = loadLocalCache(userId);
   try {
-    let { data: row, error } = await sb.from("profiles").select("*").eq("id", userId).single();
-    if (error && error.code === "PGRST116") { // no row yet — first login
-      const seedName = (email || "").split("@")[0] || "You";
-      const inserted = await sb.from("profiles")
-        .upsert({ id: userId, name: seedName, color: PROFILE_COLORS[0], data: localCached, updated_at: new Date().toISOString() })
-        .select().single();
-      row = inserted.data; error = inserted.error;
-    }
+    // Ensure a row exists WITHOUT ever overwriting one that already does.
+    // ignoreDuplicates makes this a true no-op if the row is already there —
+    // this must never be a plain upsert, since a false "no row found" signal
+    // from a transient read/timing issue would otherwise silently clobber an
+    // existing custom name/color/data back to these seed defaults.
+    const seedName = (email || "").split("@")[0] || "You";
+    await sb.from("profiles")
+      .upsert(
+        { id: userId, name: seedName, color: PROFILE_COLORS[0], data: localCached, updated_at: new Date().toISOString() },
+        { onConflict: "id", ignoreDuplicates: true }
+      );
+
+    const { data: row, error } = await sb.from("profiles").select("*").eq("id", userId).single();
     if (error) throw error;
     myProfile = { id: row.id, name: row.name, color: row.color };
     state = row.data || { active: null, history: [], program: null, location: "gym" };
