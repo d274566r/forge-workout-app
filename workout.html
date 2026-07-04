@@ -1426,17 +1426,29 @@ async function runPostAuthInit() {
 
 // Guard against double-init: getSession() at boot and onAuthStateChange's
 // SIGNED_IN can both fire for the same session (Supabase emits SIGNED_IN on
-// client init too in some cases). loadAndAdoptState() sets currentUserId as
-// its first line, so this check makes the second firing a no-op.
+// client init too in some cases), and since both are independent async flows,
+// a plain "if currentUserId already matches, skip" check is NOT race-safe —
+// both can pass that check before either has actually set currentUserId,
+// firing two concurrent loadAndAdoptState() calls that race to overwrite the
+// shared `myProfile`/`state` globals. Fix: claim `authHandlingUserId`
+// synchronously (no `await` before it), so whichever call runs first wins
+// the claim before the other one even gets a chance to check it.
+let authHandlingUserId = undefined;
+async function handleAuthedSession(session) {
+  if (authHandlingUserId === session.user.id) return;
+  authHandlingUserId = session.user.id;
+  showAuthScreen(false);
+  await loadAndAdoptState(session.user.id, session.user.email);
+  await runPostAuthInit();
+}
+
 sb.auth.onAuthStateChange(async (event, session) => {
   if (event === "SIGNED_IN" && session) {
-    if (currentUserId === session.user.id) return;
-    showAuthScreen(false);
-    await loadAndAdoptState(session.user.id, session.user.email);
-    await runPostAuthInit();
+    await handleAuthedSession(session);
   } else if (event === "SIGNED_OUT") {
     closeProfileModal(); // may have been open (e.g. "Log out" is triggered from inside it)
     resetAppState();
+    authHandlingUserId = undefined;
     showAuthScreen(true);
     resetAuthForm();
   }
@@ -1446,9 +1458,7 @@ sb.auth.onAuthStateChange(async (event, session) => {
   document.getElementById("generateBtn").addEventListener("click", generatePlan);
   const { data: { session } } = await sb.auth.getSession();
   if (session) {
-    showAuthScreen(false);
-    await loadAndAdoptState(session.user.id, session.user.email);
-    await runPostAuthInit();
+    await handleAuthedSession(session);
   } else {
     showAuthScreen(true);
   }
