@@ -251,13 +251,37 @@
     <div id="authFormStep">
       <label class="inline" style="display:block; margin-bottom:6px;">Email</label>
       <input type="email" id="authEmail" placeholder="you@example.com" style="width:100%; margin-bottom:12px;"
-        onkeydown="if(event.key==='Enter') sendMagicLink();">
-      <button class="btn block" id="sendLinkBtn" onclick="sendMagicLink()">Send magic link</button>
+        onkeydown="if(event.key==='Enter') submitAuthForm();">
+      <label class="inline" style="display:block; margin-bottom:6px;">Password</label>
+      <input type="password" id="authPassword" placeholder="••••••••" style="width:100%; margin-bottom:4px;"
+        onkeydown="if(event.key==='Enter') submitAuthForm();">
+      <div style="text-align:right; margin-bottom:12px;">
+        <a href="#" id="forgotPasswordLink" style="font-size:12.5px; color:var(--text-dim);" onclick="showForgotPasswordStep(); return false;">Forgot password?</a>
+      </div>
+      <button class="btn block" id="authSubmitBtn" onclick="submitAuthForm()">Sign in</button>
+      <p class="subtitle" style="margin-top:14px; text-align:center;">
+        <span id="authModePrompt">Don't have an account?</span>
+        <a href="#" id="authModeToggle" onclick="toggleAuthMode(); return false;">Sign up</a>
+      </p>
     </div>
     <div id="authSentStep" style="display:none; text-align:center;">
       <span style="font-size:36px; display:block; margin-bottom:10px;">📬</span>
-      <p>Check <b id="authSentEmail"></b> for a sign-in link.</p>
-      <button class="btn secondary block" style="margin-top:14px;" onclick="resetAuthForm()">Use a different email</button>
+      <p>Check <b id="authSentEmail"></b> <span id="authSentSuffix">for a sign-in link.</span></p>
+      <button class="btn secondary block" style="margin-top:14px;" onclick="resetAuthForm()">Back</button>
+    </div>
+    <div id="authForgotStep" style="display:none;">
+      <label class="inline" style="display:block; margin-bottom:6px;">Email</label>
+      <input type="email" id="forgotEmail" placeholder="you@example.com" style="width:100%; margin-bottom:12px;"
+        onkeydown="if(event.key==='Enter') sendPasswordReset();">
+      <button class="btn block" id="sendResetBtn" onclick="sendPasswordReset()">Send reset link</button>
+      <button class="btn secondary block" style="margin-top:10px;" onclick="resetAuthForm()">Back to sign in</button>
+    </div>
+    <div id="authRecoveryStep" style="display:none;">
+      <p class="subtitle" style="margin-bottom:12px;">Choose a new password for your account.</p>
+      <label class="inline" style="display:block; margin-bottom:6px;">New password</label>
+      <input type="password" id="recoveryPassword" placeholder="••••••••" style="width:100%; margin-bottom:12px;"
+        onkeydown="if(event.key==='Enter') submitNewPassword();">
+      <button class="btn block" id="recoverySubmitBtn" onclick="submitNewPassword()">Set new password</button>
     </div>
   </div>
 </div>
@@ -1381,23 +1405,108 @@ function showAuthScreen(show) {
   document.querySelector("nav").style.display = show ? "none" : "";
 }
 
-async function sendMagicLink() {
-  const email = (document.getElementById("authEmail").value || "").trim();
-  if (!email) return;
-  document.getElementById("sendLinkBtn").disabled = true;
-  const { error } = await sb.auth.signInWithOtp({
-    email, options: { emailRedirectTo: window.location.origin + window.location.pathname },
-  });
-  document.getElementById("sendLinkBtn").disabled = false;
-  if (error) { showAlert("Couldn't send link: " + error.message); return; }
+// Recovery links from "reset password" emails land back on this same page
+// with `#...&type=recovery` in the hash. Supabase-js parses that hash during
+// client init (before any of our code runs) and establishes a session for it,
+// so by the time boot() calls getSession() it looks like a normal logged-in
+// session. This flag lets boot()/onAuthStateChange route that case to the
+// "set a new password" step instead of straight into the app.
+let isRecoveryLink = /type=recovery/.test(window.location.hash);
+
+let authMode = "signin"; // "signin" | "signup"
+
+function toggleAuthMode() {
+  authMode = authMode === "signin" ? "signup" : "signin";
+  document.getElementById("authSubmitBtn").textContent = authMode === "signin" ? "Sign in" : "Create account";
+  document.getElementById("authModePrompt").textContent = authMode === "signin" ? "Don't have an account?" : "Already have an account?";
+  document.getElementById("authModeToggle").textContent = authMode === "signin" ? "Sign up" : "Sign in";
+  document.getElementById("forgotPasswordLink").style.visibility = authMode === "signin" ? "visible" : "hidden";
+}
+
+function showSentStep(email, suffixText) {
   document.getElementById("authSentEmail").textContent = email;
+  document.getElementById("authSentSuffix").textContent = suffixText;
   document.getElementById("authFormStep").style.display = "none";
+  document.getElementById("authForgotStep").style.display = "none";
   document.getElementById("authSentStep").style.display = "block";
 }
+
+async function submitAuthForm() {
+  const email = (document.getElementById("authEmail").value || "").trim();
+  const password = document.getElementById("authPassword").value || "";
+  if (!email || !password) return;
+  const btn = document.getElementById("authSubmitBtn");
+  btn.disabled = true;
+  try {
+    if (authMode === "signin") {
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) { showAlert("Couldn't sign in: " + error.message); return; }
+      // onAuthStateChange's SIGNED_IN handler takes it from here.
+    } else {
+      const { data, error } = await sb.auth.signUp({ email, password });
+      if (error) { showAlert("Couldn't create account: " + error.message); return; }
+      if (!data.session) {
+        // No session came back — email confirmation is required on this
+        // project. (We recommend disabling that in Supabase's dashboard so
+        // sign-up never depends on an email being deliverable, but handle
+        // the case either way.)
+        showSentStep(email, "for a confirmation link.");
+      }
+      // else: session came back immediately — onAuthStateChange handles it.
+    }
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function showForgotPasswordStep() {
+  document.getElementById("forgotEmail").value = document.getElementById("authEmail").value || "";
+  document.getElementById("authFormStep").style.display = "none";
+  document.getElementById("authForgotStep").style.display = "block";
+}
+
+async function sendPasswordReset() {
+  const email = (document.getElementById("forgotEmail").value || "").trim();
+  if (!email) return;
+  const btn = document.getElementById("sendResetBtn");
+  btn.disabled = true;
+  const { error } = await sb.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin + window.location.pathname,
+  });
+  btn.disabled = false;
+  if (error) { showAlert("Couldn't send reset link: " + error.message); return; }
+  showSentStep(email, "for a password reset link.");
+}
+
+function showRecoveryStep() {
+  document.getElementById("authFormStep").style.display = "none";
+  document.getElementById("authSentStep").style.display = "none";
+  document.getElementById("authForgotStep").style.display = "none";
+  document.getElementById("authRecoveryStep").style.display = "block";
+  showAuthScreen(true);
+}
+
+async function submitNewPassword() {
+  const password = document.getElementById("recoveryPassword").value || "";
+  if (!password) return;
+  const btn = document.getElementById("recoverySubmitBtn");
+  btn.disabled = true;
+  const { error } = await sb.auth.updateUser({ password });
+  btn.disabled = false;
+  if (error) { showAlert("Couldn't set new password: " + error.message); return; }
+  isRecoveryLink = false;
+  history.replaceState(null, "", window.location.pathname);
+  document.getElementById("authRecoveryStep").style.display = "none";
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) await handleAuthedSession(session);
+}
+
 function resetAuthForm() {
   document.getElementById("authFormStep").style.display = "block";
   document.getElementById("authSentStep").style.display = "none";
+  document.getElementById("authForgotStep").style.display = "none";
   document.getElementById("authEmail").value = "";
+  document.getElementById("authPassword").value = "";
 }
 
 async function loadAndAdoptState(userId, email) {
@@ -1475,7 +1584,10 @@ async function handleAuthedSession(session) {
 }
 
 sb.auth.onAuthStateChange(async (event, session) => {
-  if (event === "SIGNED_IN" && session) {
+  if (event === "PASSWORD_RECOVERY") {
+    showRecoveryStep();
+  } else if (event === "SIGNED_IN" && session) {
+    if (isRecoveryLink) return; // still on the "set new password" step — see submitNewPassword()
     await handleAuthedSession(session);
   } else if (event === "SIGNED_OUT") {
     closeProfileModal(); // may have been open (e.g. "Log out" is triggered from inside it)
@@ -1488,6 +1600,10 @@ sb.auth.onAuthStateChange(async (event, session) => {
 
 (async function boot() {
   document.getElementById("generateBtn").addEventListener("click", generatePlan);
+  if (isRecoveryLink) {
+    showRecoveryStep();
+    return;
+  }
   const { data: { session } } = await sb.auth.getSession();
   if (session) {
     await handleAuthedSession(session);
