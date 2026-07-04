@@ -1405,6 +1405,20 @@ function showAuthScreen(show) {
   document.querySelector("nav").style.display = show ? "none" : "";
 }
 
+// Supabase's client-side calls (including plain local reads like
+// getSession()) can occasionally hang forever instead of resolving or
+// rejecting — e.g. an internal session-refresh lock left wedged from an
+// interrupted previous call. Every await on such a call would otherwise
+// freeze that code path permanently, with no error and no way to recover
+// short of the user guessing to reload. Racing against a timeout guarantees
+// every auth-gated flow eventually reaches its catch/fallback branch.
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error("Timed out reaching Supabase")), ms)),
+  ]);
+}
+
 // Recovery links from "reset password" emails land back on this same page
 // with `#...&type=recovery` in the hash. Supabase-js parses that hash during
 // client init (before any of our code runs) and establishes a session for it,
@@ -1439,11 +1453,11 @@ async function submitAuthForm() {
   btn.disabled = true;
   try {
     if (authMode === "signin") {
-      const { error } = await sb.auth.signInWithPassword({ email, password });
+      const { error } = await withTimeout(sb.auth.signInWithPassword({ email, password }), 10000);
       if (error) { showAlert("Couldn't sign in: " + error.message); return; }
       // onAuthStateChange's SIGNED_IN handler takes it from here.
     } else {
-      const { data, error } = await sb.auth.signUp({ email, password });
+      const { data, error } = await withTimeout(sb.auth.signUp({ email, password }), 10000);
       if (error) { showAlert("Couldn't create account: " + error.message); return; }
       if (!data.session) {
         // No session came back — email confirmation is required on this
@@ -1454,6 +1468,8 @@ async function submitAuthForm() {
       }
       // else: session came back immediately — onAuthStateChange handles it.
     }
+  } catch (e) {
+    showAlert("Couldn't reach Supabase: " + e.message);
   } finally {
     btn.disabled = false;
   }
@@ -1470,12 +1486,17 @@ async function sendPasswordReset() {
   if (!email) return;
   const btn = document.getElementById("sendResetBtn");
   btn.disabled = true;
-  const { error } = await sb.auth.resetPasswordForEmail(email, {
-    redirectTo: window.location.origin + window.location.pathname,
-  });
-  btn.disabled = false;
-  if (error) { showAlert("Couldn't send reset link: " + error.message); return; }
-  showSentStep(email, "for a password reset link.");
+  try {
+    const { error } = await withTimeout(sb.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + window.location.pathname,
+    }), 10000);
+    if (error) { showAlert("Couldn't send reset link: " + error.message); return; }
+    showSentStep(email, "for a password reset link.");
+  } catch (e) {
+    showAlert("Couldn't reach Supabase: " + e.message);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 function showRecoveryStep() {
@@ -1491,14 +1512,19 @@ async function submitNewPassword() {
   if (!password) return;
   const btn = document.getElementById("recoverySubmitBtn");
   btn.disabled = true;
-  const { error } = await sb.auth.updateUser({ password });
-  btn.disabled = false;
-  if (error) { showAlert("Couldn't set new password: " + error.message); return; }
-  isRecoveryLink = false;
-  history.replaceState(null, "", window.location.pathname);
-  document.getElementById("authRecoveryStep").style.display = "none";
-  const { data: { session } } = await sb.auth.getSession();
-  if (session) await handleAuthedSession(session);
+  try {
+    const { error } = await withTimeout(sb.auth.updateUser({ password }), 10000);
+    if (error) { showAlert("Couldn't set new password: " + error.message); return; }
+    isRecoveryLink = false;
+    history.replaceState(null, "", window.location.pathname);
+    document.getElementById("authRecoveryStep").style.display = "none";
+    const { data: { session } } = await withTimeout(sb.auth.getSession(), 10000);
+    if (session) await handleAuthedSession(session);
+  } catch (e) {
+    showAlert("Couldn't reach Supabase: " + e.message);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 function resetAuthForm() {
@@ -1519,13 +1545,16 @@ async function loadAndAdoptState(userId, email) {
     // from a transient read/timing issue would otherwise silently clobber an
     // existing custom name/color/data back to these seed defaults.
     const seedName = (email || "").split("@")[0] || "You";
-    await sb.from("profiles")
-      .upsert(
-        { id: userId, name: seedName, color: PROFILE_COLORS[0], data: localCached, updated_at: new Date().toISOString() },
-        { onConflict: "id", ignoreDuplicates: true }
-      );
+    await withTimeout(
+      sb.from("profiles")
+        .upsert(
+          { id: userId, name: seedName, color: PROFILE_COLORS[0], data: localCached, updated_at: new Date().toISOString() },
+          { onConflict: "id", ignoreDuplicates: true }
+        ),
+      10000
+    );
 
-    const { data: row, error } = await sb.from("profiles").select("*").eq("id", userId).single();
+    const { data: row, error } = await withTimeout(sb.from("profiles").select("*").eq("id", userId).single(), 10000);
     if (error) throw error;
     myProfile = { id: row.id, name: row.name, color: row.color };
     state = row.data || { active: null, history: [], program: null, location: "gym" };
@@ -1554,15 +1583,22 @@ function resetAppState() {
 }
 
 async function runPostAuthInit() {
-  renderFocusGrid();
-  renderStreak();
-  renderProgramStrip();
-  renderLocationControls();
+  // Update the name/color badge first — if any render call below throws,
+  // it must never leave the page stuck on the static "You" placeholder from
+  // the raw HTML while the profile pill's real data is sitting in memory.
   renderProfileBadge();
-  maybeOfferLocalImport();
-  if (state.active) showView("workout");
-  else if (state.program) showView("goal");
-  else showView("plan");
+  try {
+    renderFocusGrid();
+    renderStreak();
+    renderProgramStrip();
+    renderLocationControls();
+    maybeOfferLocalImport();
+    if (state.active) showView("workout");
+    else if (state.program) showView("goal");
+    else showView("plan");
+  } catch (e) {
+    showAlert("Something went wrong loading your data: " + e.message);
+  }
 }
 
 // Guard against double-init: getSession() at boot and onAuthStateChange's
@@ -1604,7 +1640,19 @@ sb.auth.onAuthStateChange(async (event, session) => {
     showRecoveryStep();
     return;
   }
-  const { data: { session } } = await sb.auth.getSession();
+  let session = null;
+  try {
+    const { data } = await withTimeout(sb.auth.getSession(), 10000);
+    session = data.session;
+  } catch (e) {
+    // getSession() didn't respond in time — clear the locally stored token so
+    // a stuck internal client state doesn't keep wedging every future load on
+    // this device, and fail toward the login screen rather than leaving a
+    // half-rendered app frozen forever with no way to recover.
+    Object.keys(localStorage).filter(k => /^sb-.*-auth-token$/.test(k)).forEach(k => localStorage.removeItem(k));
+    showAuthScreen(true);
+    return;
+  }
   if (session) {
     await handleAuthedSession(session);
   } else {
