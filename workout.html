@@ -929,7 +929,9 @@ function renderWorkout() {
     return;
   }
   const w = state.active;
-  const f = FOCUSES[w.focus];
+  const f = w.curriculumTag
+    ? dayLabel({ kind: "curriculum", curriculumKey: w.curriculumTag.curriculumKey, sectionKey: w.curriculumTag.sectionKey }, w.focus)
+    : FOCUSES[w.focus];
   const totalSets = w.exercises.reduce((n, ex) => n + ex.setLog.length, 0);
   const doneSets = w.exercises.reduce((n, ex) => n + ex.setLog.filter(s => s.done).length, 0);
   const started = new Date(w.startedAt);
@@ -946,11 +948,14 @@ function renderWorkout() {
     html += `<div class="card workout-ex" id="wex-${ei}">
       <div class="ex-header" onclick="toggleCollapse(${ei})">
         <div class="ex-info">
-          <div class="ex-name">${ex.name}</div>
-          <div class="ex-meta">${GROUP_LABELS[ex.group]} · target ${ex.reps}${ex.timed ? "s" : " reps"}</div>
+          <div class="ex-name">${ex.curriculum ? ex.nameZh : ex.name}</div>
+          ${ex.curriculum ? `<div class="ex-meta" style="opacity:.8">${ex.nameEn}</div>` : ""}
+          <div class="ex-meta">${ex.curriculum
+            ? `${ex.sets}×${ex.reps}${ex.note ? " · " + ex.note : ""} · Rest: ${ex.rest}s`
+            : `${GROUP_LABELS[ex.group]} · target ${ex.reps}${ex.timed ? "s" : " reps"}`}</div>
           ${ex.hint ? `<div class="hint">📈 ${ex.hint}</div>` : ""}
         </div>
-        <button class="icon-btn" title="Replace exercise" onclick="event.stopPropagation(); openWorkoutSwap(${ei})">⇄</button>
+        ${ex.curriculum ? "" : `<button class="icon-btn" title="Replace exercise" onclick="event.stopPropagation(); openWorkoutSwap(${ei})">⇄</button>`}
         <span class="ex-progress ${complete ? "complete" : ""}">${complete ? "✓ done" : done + "/" + ex.setLog.length}</span>
       </div>
       <div class="set-grid">`;
@@ -1018,6 +1023,7 @@ function finishWorkout() {
     entry.programTag = w.programTag;
     if (state.program) state.program.log.push({ ...w.programTag, date: entry.date });
   }
+  if (w.curriculumTag) entry.curriculumTag = w.curriculumTag;
   state.history.unshift(entry);
   state.active = null;
   save();
@@ -1059,7 +1065,9 @@ function renderHistory() {
   }
 
   list.innerHTML = state.history.map((h, i) => {
-    const f = FOCUSES[h.focus] || { icon: "🏋️", name: h.focus };
+    const f = h.curriculumTag
+      ? dayLabel({ kind: "curriculum", curriculumKey: h.curriculumTag.curriculumKey, sectionKey: h.curriculumTag.sectionKey }, h.focus)
+      : (FOCUSES[h.focus] || { icon: "🏋️", name: h.focus });
     const d = new Date(h.date);
     const totalSets = h.exercises.reduce((n, ex) => n + ex.sets.length, 0);
     const vol = Math.round(volumeOf(h));
@@ -1114,6 +1122,91 @@ async function renderLeaderboard() {
       </div>`).join("") + `</div>`;
 }
 
+/* ================= CURRICULA (ShiFu H etc.) =================
+   A "curriculum" is a fixed, teacher-authored multi-week program made of named
+   "sections". Unlike GOAL_TYPES (procedural), every exercise here is fixed: exact
+   name, sets, reps, rest. Adding a future section is just adding a key under
+   `sections` below, following the same {name, nameZh, weeks, rotations, days}
+   shape — no other code changes required. */
+const CURRICULA = {
+  shifuH: {
+    icon: "🀄",
+    name: "ShiFu H",
+    desc: "Structured curriculum from real class material",
+    sections: {
+      standardHypertrophy: {
+        name: "Standard Hypertrophy",
+        nameZh: "標準增肌",
+        weeks: 12,
+        rotations: {
+          3: ["chestTri", "backBi", "legsAbs"],
+          4: ["chestTri", "backBi", "legsAbs", "shoulders"],
+        },
+        days: {
+          chestTri: {
+            nameZh: "胸+三頭", nameEn: "Chest + Triceps",
+            exercises: [
+              { nameZh: "啞鈴上斜臥推", nameEn: "Dumbbell Incline Bench Press", sets: 4, reps: 8,  rest: 120 },
+              { nameZh: "啞鈴臥推",     nameEn: "Dumbbell Bench Press",         sets: 4, reps: 8,  rest: 120 },
+              { nameZh: "繩索下胸推",   nameEn: "Cable Low Chest Press",        sets: 4, reps: 10, rest: 90  },
+              { nameZh: "固定式飛鳥夾胸", nameEn: "Machine Pec Fly",            sets: 4, reps: 12, rest: 90  },
+              { nameZh: "繩索三頭下拉", nameEn: "Cable Tricep Pushdown",        sets: 4, reps: 10, rest: 60  },
+            ],
+          },
+          backBi: {
+            nameZh: "背+二頭", nameEn: "Back + Biceps",
+            exercises: [
+              { nameZh: "單臂啞鈴划船",       nameEn: "Single-Arm Dumbbell Row",     sets: 4, reps: 8,  rest: 120, note: "per side (單側)" },
+              { nameZh: "反手引體向上",       nameEn: "Reverse-Grip Pull-Up",        sets: 4, reps: 8,  rest: 120 },
+              { nameZh: "掛片式高位划船",     nameEn: "Plate-Loaded High Row",       sets: 4, reps: 10, rest: 90  },
+              { nameZh: "繩索直臂下壓",       nameEn: "Cable Straight-Arm Pulldown", sets: 4, reps: 12, rest: 90  },
+              { nameZh: "固定式坐姿二頭彎舉", nameEn: "Seated Machine Bicep Curl",   sets: 4, reps: 10, rest: 60  },
+            ],
+          },
+          legsAbs: {
+            nameZh: "腿+核心", nameEn: "Legs + Abs",
+            exercises: [
+              { nameZh: "保加利亞分腿蹲",   nameEn: "Bulgarian Split Squat", sets: 4, reps: 8,  rest: 120, note: "per leg (每腳)" },
+              { nameZh: "啞鈴相撲深蹲",     nameEn: "Dumbbell Sumo Squat",   sets: 4, reps: 8,  rest: 120 },
+              { nameZh: "槓鈴臀推",         nameEn: "Barbell Hip Thrust",    sets: 4, reps: 10, rest: 90  },
+              { nameZh: "固定式蹺伸腿伸展", nameEn: "Fixed Leg Extension",   sets: 4, reps: 12, rest: 90  },
+              { nameZh: "繩索捲腹",         nameEn: "Cable Crunch",          sets: 4, reps: 20, rest: 60  },
+            ],
+          },
+          shoulders: {
+            nameZh: "肩", nameEn: "Shoulders",
+            exercises: [
+              { nameZh: "坐姿啞鈴肩推",   nameEn: "Seated Dumbbell Shoulder Press",   sets: 4, reps: 8,  rest: 120 },
+              { nameZh: "槓鈴直立划船",   nameEn: "Barbell Upright Row",              sets: 4, reps: 8,  rest: 120 },
+              { nameZh: "啞鈴側平舉",     nameEn: "Dumbbell Lateral Raise",           sets: 4, reps: 10, rest: 90  },
+              { nameZh: "反向蝴蝶機夾背", nameEn: "Reverse Pec Deck (Rear Delt Fly)", sets: 4, reps: 12, rest: 90  },
+              { nameZh: "繩索面拉",       nameEn: "Cable Face Pull",                  sets: 4, reps: 15, rest: 60  },
+            ],
+          },
+        },
+      },
+      // Future sections go here — same {name, nameZh, weeks, rotations, days} shape.
+    },
+  },
+};
+
+function programMeta(p) {
+  if ((p.kind || "goal") === "curriculum") {
+    const cur = CURRICULA[p.curriculumKey];
+    const sec = cur.sections[p.sectionKey];
+    return { icon: cur.icon, name: `${cur.name} — ${sec.name}`, isCurriculum: true, cur, sec };
+  }
+  const g = GOAL_TYPES[p.goalType];
+  return { icon: g.icon, name: g.name, isCurriculum: false, goalDef: g };
+}
+function dayLabel(p, dayKey) {
+  if ((p.kind || "goal") === "curriculum") {
+    const d = programMeta(p).sec.days[dayKey];
+    return { icon: "📋", name: `${d.nameZh} ${d.nameEn}` };
+  }
+  return FOCUSES[dayKey];
+}
+
 /* ================= GOAL PROGRAM ================= */
 const GOAL_TYPES = {
   strength:  { icon: "🏋️", name: "Strength",        desc: "Heavy compound lifts, 5×5", scheme: "strength" },
@@ -1144,6 +1237,7 @@ function buildSplit(goalType, days) {
 }
 
 let selGoalType = null;
+let selCurriculum = null;
 
 function renderGoal() {
   renderProgramStrip();
@@ -1161,8 +1255,20 @@ function renderGoalSetup(el) {
       <span class="f-icon">${g.icon}</span><span class="f-name">${g.name}</span>
       <div class="f-desc">${g.desc}</div></button>`;
   });
-  html += `</div>
-    <div class="card" style="margin-top:14px;">
+  Object.entries(CURRICULA).forEach(([key, c]) => {
+    html += `<button class="focus-btn ${selCurriculum && selCurriculum.curriculumKey === key ? "selected" : ""}" onclick="selectCurriculum('${key}')">
+      <span class="f-icon">${c.icon}</span><span class="f-name">${c.name}</span>
+      <div class="f-desc">${c.desc}</div></button>`;
+  });
+  html += `</div>`;
+  html += selCurriculum ? renderCurriculumSetupCard() : renderGoalSetupCard();
+  el.innerHTML = html;
+  renderLocationControls();
+  if (selCurriculum) renderCurriculumPreview(); else renderSplitPreview();
+}
+
+function renderGoalSetupCard() {
+  return `<div class="card" style="margin-top:14px;">
       <div class="row" style="margin-bottom:10px;">
         <label class="inline">Location</label>
         <span id="locToggleGoal" class="row" style="gap:6px;"></span>
@@ -1188,12 +1294,77 @@ function renderGoalSetup(el) {
       <p class="subtitle" id="splitPreview" style="margin:10px 0 0;"></p>
       <button class="btn block" onclick="startProgram()">Start program 🎯</button>
     </div>`;
-  el.innerHTML = html;
-  renderLocationControls();
-  renderSplitPreview();
 }
 
-function selectGoalType(key) { selGoalType = key; renderGoal(); }
+function selectGoalType(key) { selGoalType = key; selCurriculum = null; renderGoal(); }
+
+function selectCurriculum(key) {
+  selGoalType = null;
+  const cur = CURRICULA[key];
+  const firstSection = Object.keys(cur.sections)[0];
+  selCurriculum = { curriculumKey: key, sectionKey: firstSection };
+  renderGoal();
+}
+function selectCurriculumSection(key) { selCurriculum.sectionKey = key; renderGoal(); }
+
+function renderCurriculumSetupCard() {
+  const cur = CURRICULA[selCurriculum.curriculumKey];
+  const sectionKeys = Object.keys(cur.sections);
+  const sec = cur.sections[selCurriculum.sectionKey];
+  return `<div class="card" style="margin-top:14px;">
+      <div class="row" style="margin-bottom:10px;">
+        <label class="inline">Location</label>
+        <span id="locToggleGoal" class="row" style="gap:6px;"></span>
+      </div>
+      <div class="row" style="margin-bottom:10px;">
+        <label class="inline">Section</label>
+        <select id="curSection" onchange="selectCurriculumSection(this.value)">
+          ${sectionKeys.map(k => `<option value="${k}" ${k === selCurriculum.sectionKey ? "selected" : ""}>${cur.sections[k].name} (${cur.sections[k].nameZh})</option>`).join("")}
+        </select>
+      </div>
+      <div class="row">
+        <label class="inline">Duration</label>
+        <span class="tag">${sec.weeks} weeks (fixed)</span>
+        <label class="inline">Workouts / week</label>
+        <select id="curDays" onchange="renderCurriculumPreview()">
+          <option value="3">3 (no Shoulder day)</option>
+          <option value="4" selected>4 (adds Shoulder day)</option>
+        </select>
+      </div>
+      <p class="subtitle" id="curPreview" style="margin:10px 0 0;"></p>
+      <button class="btn block" onclick="startCurriculumProgram()">Start program 🎯</button>
+    </div>`;
+}
+
+function renderCurriculumPreview() {
+  const cur = CURRICULA[selCurriculum.curriculumKey];
+  const sec = cur.sections[selCurriculum.sectionKey];
+  const days = parseInt(document.getElementById("curDays").value, 10);
+  const split = sec.rotations[days];
+  document.getElementById("curPreview").innerHTML =
+    `Weekly split: <b>${split.map(k => sec.days[k].nameZh + " " + sec.days[k].nameEn).join(" · ")}</b> — ` +
+    `${sec.weeks * days} workouts over ${sec.weeks} weeks.`;
+}
+
+function startCurriculumProgram() {
+  const days = parseInt(document.getElementById("curDays").value, 10);
+  const cur = CURRICULA[selCurriculum.curriculumKey];
+  const sec = cur.sections[selCurriculum.sectionKey];
+  state.program = {
+    kind: "curriculum",
+    curriculumKey: selCurriculum.curriculumKey,
+    sectionKey: selCurriculum.sectionKey,
+    weeks: sec.weeks,
+    daysPerWeek: days,
+    split: sec.rotations[days].slice(),
+    location: currentLoc(),
+    startDate: new Date().toISOString(),
+    log: [],
+  };
+  save();
+  renderProgramStrip();
+  renderGoal();
+}
 
 function progWeeksValue() {
   const sel = document.getElementById("progWeeks");
@@ -1242,10 +1413,13 @@ function programStats(p) {
   return { total, done, nextWeek, nextSlot, endDate, complete: done >= total };
 }
 
-function isDeloadWeek(p, week) { return p.weeks >= 6 && week === p.weeks; }
+function isDeloadWeek(p, week) {
+  if ((p.kind || "goal") === "curriculum") return false;
+  return p.weeks >= 6 && week === p.weeks;
+}
 
 function renderProgramDashboard(el, p) {
-  const g = GOAL_TYPES[p.goalType];
+  const g = programMeta(p);
   const s = programStats(p);
   const pct = Math.round((s.done / s.total) * 100);
   let html = `<h2>${g.icon} ${p.weeks}-Week ${g.name}</h2>`;
@@ -1255,7 +1429,7 @@ function renderProgramDashboard(el, p) {
     el.innerHTML = html;
     return;
   }
-  const scheme = GOALS[g.scheme];
+  const scheme = g.isCurriculum ? null : GOALS[g.goalDef.scheme];
   const loc = LOCATIONS[p.location || "gym"];
   html += `<p class="subtitle">Week ${s.nextWeek} of ${p.weeks}${isDeloadWeek(p, s.nextWeek) ? ' <span class="deload-chip">Deload week</span>' : ""} · ${loc.icon} ${loc.name} · ends ${s.endDate.toLocaleDateString([], { month: "short", day: "numeric" })}</p>
     <div class="card">
@@ -1269,13 +1443,16 @@ function renderProgramDashboard(el, p) {
     <div class="card">`;
   const doneThisWeek = s.done % p.daysPerWeek;
   p.split.forEach((focus, i) => {
-    const f = FOCUSES[focus];
+    const f = dayLabel(p, focus);
     const slotDone = i < doneThisWeek;
     const isNext = i === doneThisWeek;
+    const metaLine = g.isCurriculum
+      ? `Workout ${i + 1} of ${p.daysPerWeek} · ${g.sec.days[focus].exercises.length} exercises`
+      : `Workout ${i + 1} of ${p.daysPerWeek} · ${scheme.sets}×${scheme.reps} scheme`;
     html += `<div class="slot-row">
       <div class="ex-info">
         <div class="ex-name">${f.icon} ${f.name}</div>
-        <div class="ex-meta">Workout ${i + 1} of ${p.daysPerWeek} · ${scheme.sets}×${scheme.reps} scheme</div>
+        <div class="ex-meta">${metaLine}</div>
       </div>
       ${slotDone
         ? '<span class="slot-status done">✓ done</span>'
@@ -1293,6 +1470,7 @@ function endProgram(confirmFirst) {
   const doEnd = () => {
     state.program = null;
     selGoalType = null;
+    selCurriculum = null;
     save();
     renderProgramStrip();
     renderGoal();
@@ -1328,8 +1506,9 @@ function startProgramWorkout() {
   const p = state.program;
   const s = programStats(p);
   if (s.complete) return;
-  if (state.active) { showConfirm("You already have a workout in progress. Replace it?", () => doStartProgramWorkout(p, s)); return; }
-  doStartProgramWorkout(p, s);
+  const start = () => ((p.kind || "goal") === "curriculum") ? doStartCurriculumWorkout(p, s) : doStartProgramWorkout(p, s);
+  if (state.active) { showConfirm("You already have a workout in progress. Replace it?", start); return; }
+  start();
 }
 function doStartProgramWorkout(p, s) {
   const focusKey = p.split[s.nextSlot - 1];
@@ -1370,11 +1549,42 @@ function doStartProgramWorkout(p, s) {
   showView("workout");
 }
 
+function doStartCurriculumWorkout(p, s) {
+  const dayKey = p.split[s.nextSlot - 1];
+  const sec = CURRICULA[p.curriculumKey].sections[p.sectionKey];
+  const day = sec.days[dayKey];
+
+  const exercises = day.exercises.map(def => ({
+    name: `${def.nameZh} ${def.nameEn}`,   // single combined name — every existing
+                                            // consumer (history rows, swap's `used`
+                                            // set, leaderboard) keeps working as-is
+    nameZh: def.nameZh, nameEn: def.nameEn, // kept for richer in-workout rendering
+    group: null, equip: null, timed: false,
+    curriculum: true,                       // swap-suppression + rendering signal
+    sets: def.sets, reps: def.reps, rest: def.rest, note: def.note || "",
+    hint: "",
+    setLog: Array.from({ length: def.sets }, () => ({ weight: "", reps: def.reps, done: false })),
+  }));
+
+  state.active = {
+    focus: dayKey,
+    curriculumTag: { curriculumKey: p.curriculumKey, sectionKey: p.sectionKey },
+    goal: null,
+    location: p.location,
+    startedAt: new Date().toISOString(),
+    programTag: { week: s.nextWeek, slot: s.nextSlot },
+    deload: false,
+    exercises,
+  };
+  save();
+  showView("workout");
+}
+
 function renderProgramStrip() {
   const el = document.getElementById("programStrip");
   const p = state.program;
   if (!p) { el.innerHTML = ""; el.onclick = null; return; }
-  const g = GOAL_TYPES[p.goalType];
+  const g = programMeta(p);
   const s = programStats(p);
   el.innerHTML = `<span>🎯 <b>${p.weeks}-Week ${g.name}</b>${s.complete ? " · complete 🎉" : ` · week ${s.nextWeek}/${p.weeks}`}</span>
     <span><b>${s.done}</b>/${s.total} workouts</span>`;
